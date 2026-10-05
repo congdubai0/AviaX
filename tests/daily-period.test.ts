@@ -3,6 +3,7 @@ import {
   consecutiveStreak,
   dateOffset,
   localDateKey,
+  secureRandomIndex,
   secureRandomIntInclusive,
   secondsUntilLocalMidnight,
 } from "../supabase/functions/_shared/daily";
@@ -28,5 +29,14 @@ describe("Asia/Jakarta daily boundaries", () => {
       expect(points).toBeLessThanOrEqual(50);
     }
     expect(() => secureRandomIntInclusive(50, 10)).toThrow("Invalid secure random range.");
+  });
+
+  it("selects a random participant index for large eligible lists", () => {
+    for (let index = 0; index < 100; index += 1) {
+      const selected = secureRandomIndex(10_000);
+      expect(selected).toBeGreaterThanOrEqual(0);
+      expect(selected).toBeLessThan(10_000);
+    }
+    expect(() => secureRandomIndex(0)).toThrow("Invalid secure random collection size.");
   });
 });

@@ -42,3 +42,19 @@ export function secureRandomIntInclusive(min: number, max: number): number {
   } while (bytes[0] >= limit);
   return min + (bytes[0] % range);
 }
+
+export function secureRandomIndex(length: number): number {
+  if (!Number.isSafeInteger(length) || length < 1) throw new Error("Invalid secure random collection size.");
+  const range = BigInt(length);
+  const byteCount = Math.ceil(Math.log2(length) / 8) || 1;
+  const space = 1n << BigInt(byteCount * 8);
+  const limit = space - (space % range);
+  const bytes = new Uint8Array(byteCount);
+  let sample: bigint;
+  do {
+    crypto.getRandomValues(bytes);
+    sample = 0n;
+    for (const byte of bytes) sample = (sample << 8n) | BigInt(byte);
+  } while (sample >= limit);
+  return Number(sample % range);
+}
