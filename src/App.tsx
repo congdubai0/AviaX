@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "react-router-dom";
 import { adminRequest, apiRequest, ApiError } from "./api";
+import { id } from "./i18n/id";
 
 type Screen = "missions" | "flight" | "leaderboard" | "friends";
 type MissionStatus = "not_started" | "checking" | "done";
@@ -237,14 +239,23 @@ function ErrorPanel({ message, onRetry }: { message: string; onRetry?: () => voi
 
 function App() {
   const queryClient = useQueryClient();
-  const [screen, setScreen] = useState<Screen>("missions");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isAdminPath = location.pathname === "/admin";
+  const isTermsPath = location.pathname === "/terms";
+  const routeScreen = location.pathname.replace(/^\//, "");
+  const screen: Screen = ["missions", "flight", "leaderboard", "friends"].includes(routeScreen)
+    ? routeScreen as Screen
+    : "missions";
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [notice, setNotice] = useState("");
   const [missionTimers, setMissionTimers] = useState<Record<string, number>>({});
   const [missionBusy, setMissionBusy] = useState<string | null>(null);
   const [missionMessage, setMissionMessage] = useState<Record<string, string>>({});
   const [flightAward, setFlightAward] = useState<FlightAward | null>(null);
-  const isAdminPath = window.location.pathname === "/admin" || window.location.hash === "#/admin";
+  useEffect(() => {
+    if (location.pathname === "/") navigate("/missions", { replace: true });
+  }, [location.pathname, navigate]);
   const bootstrap = useQuery({
     queryKey: queryKeys.bootstrap,
     queryFn: () => apiRequest<Bootstrap>("/api/bootstrap"),
@@ -333,6 +344,7 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  if (isTermsPath) return <TermsPage />;
   if (isAdminPath) return <AdminPage />;
   if (bootstrap.isPending) return <AppFrame><LoadingPanel label="Memuat akun AviaX dari Telegram..." /></AppFrame>;
   if (bootstrap.isError) {
@@ -372,11 +384,11 @@ function App() {
           </ul>
           <label className="av-terms-check">
             <input checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} type="checkbox" />
-            <span>Saya berusia 18+ dan setuju dengan <a href="#/terms">Syarat &amp; Ketentuan</a>.</span>
+            <span>{id.welcome.ageAndTerms} <a href="#/terms">{id.welcome.termsLink}</a>.</span>
           </label>
           {ageConfirm.isError && <p className="av-inline-error" role="alert">{ageConfirm.error.message}</p>}
           <button className="av-button av-button-primary av-button-wide" disabled={!termsAccepted || ageConfirm.isPending} onClick={() => ageConfirm.mutate()} type="button">
-            {ageConfirm.isPending ? "MENYIMPAN..." : "SAYA BERUSIA 18+ · MULAI"}
+            {ageConfirm.isPending ? id.welcome.saving : id.welcome.start}
             {!ageConfirm.isPending && <Icon name="arrow" size={18} />}
           </button>
         </div>
@@ -452,7 +464,7 @@ function App() {
       });
       if (result.status === "done") {
         setMissionTimers((current) => ({ ...current, [mission.key]: 0 }));
-        setMissionMessage((current) => ({ ...current, [mission.key]: `Selesai! +${mission.points} poin đã được xác nhận.` }));
+        setMissionMessage((current) => ({ ...current, [mission.key]: `Selesai! +${formatNumber(mission.points)} poin telah dikonfirmasi.` }));
         await refreshPlayerData();
       } else if (result.retryAfterSeconds) {
         setMissionTimers((current) => ({ ...current, [mission.key]: result.retryAfterSeconds ?? 0 }));
@@ -477,14 +489,14 @@ function App() {
       loading={missions.isPending}
       error={missions.error}
       onRetry={() => missions.refetch()}
-      prizeText={leaderboard.data?.prizeText ?? null}
+      prizeText={null}
       periodEndsAt={bootstrap.data.period.endsAt}
       periodSeconds={periodSeconds}
       timers={missionTimers}
       messages={missionMessage}
       busyKey={missionBusy}
       onMission={handleMission}
-      onFlight={() => setScreen("flight")}
+      onFlight={() => navigate("/flight")}
     />,
     flight: <FlightPage
       flight={flight.data}
@@ -502,7 +514,7 @@ function App() {
       loading={leaderboard.isPending}
       error={leaderboard.error}
       onRetry={() => leaderboard.refetch()}
-      prizeText={bootstrap.data.prizeText}
+      prizeText={leaderboard.data?.prizeText ?? null}
       periodSeconds={leaderboard.data?.period.secondsRemaining ?? periodSeconds}
       periodEndsAt={leaderboard.data?.period.endsAt ?? bootstrap.data.period.endsAt}
     />,
@@ -536,7 +548,7 @@ function App() {
             aria-current={screen === tab.id ? "page" : undefined}
             className={screen === tab.id ? "av-nav-item is-active" : "av-nav-item"}
             key={tab.id}
-            onClick={() => setScreen(tab.id)}
+            onClick={() => navigate(`/${tab.id}`)}
             type="button"
           >
             <Icon name={tab.icon} size={19} />
@@ -550,9 +562,28 @@ function App() {
   );
 }
 
+function TermsPage() {
+  return (
+    <AppFrame>
+      <section className="av-card av-terms-page">
+        <a className="av-admin-back" href="#/missions">← {id.terms.back}</a>
+        <p className="av-eyebrow">AVIAX</p>
+        <h1>{id.terms.title}</h1>
+        <p>{id.terms.age}</p>
+        <p>{id.terms.free}</p>
+        <p>{id.terms.verification}</p>
+        <p>{id.terms.fraud}</p>
+        <p>{id.terms.prizes}</p>
+        <p>{id.terms.privacy}</p>
+        <p className="av-terms-todo">{id.terms.todo}</p>
+      </section>
+    </AppFrame>
+  );
+}
+
 function Brand() {
   return (
-    <a aria-label="AviaX home" className="av-brand" href="/">
+    <a aria-label="AviaX home" className="av-brand" href="#/missions">
       <span className="av-brand-icon"><Icon name="plane" size={22} /></span>
       <span><strong>Avia<span>X</span></strong><small>TELEGRAM MINI APP</small></span>
     </a>
@@ -676,16 +707,16 @@ function MissionCard({
   const isDone = mission.status === "done";
   const isLocked = mission.locked;
   const actionLabel = busy
-    ? "MEMPROSES"
+    ? id.missionStatus.processing
     : isDone
-      ? "SELESAI"
+      ? id.missionStatus.done
       : isLocked
-        ? "TERKUNCI"
+        ? id.missionStatus.locked
         : remaining > 0
           ? formatCountdown(remaining)
           : mission.status === "checking"
-            ? "VERIFIKASI"
-            : "MULAI";
+            ? id.missionStatus.verifying
+            : id.missionStatus.notStarted;
   const icon = mission.type === "JOIN_CHANNEL"
     ? "channel"
     : mission.type === "VISIT_LINK"

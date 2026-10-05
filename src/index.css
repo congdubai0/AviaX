@@ -4,24 +4,24 @@
 
 :root {
   font-family: "Nunito", sans-serif;
-  color: #fff5eb;
-  background: #17101b;
+  color: #FFEBD2;
+  background: #2B1214;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-weight: 500;
   color-scheme: dark;
-  --aviax-bg: #17101b;
-  --aviax-card: #241923;
-  --aviax-card-raised: #30202a;
-  --aviax-orange: #ff9f43;
-  --aviax-gold: #ffc46f;
-  --aviax-red: #df483b;
-  --aviax-text: #fff5eb;
-  --aviax-muted: #b5a6ae;
-  --aviax-green: #7fd091;
-  --aviax-line: rgb(255 228 210 / 10%);
+  --aviax-bg: #2B1214;
+  --aviax-card: #3F1D20;
+  --aviax-card-raised: #4A2425;
+  --aviax-orange: #F7931E;
+  --aviax-gold: #FFD08A;
+  --aviax-red: #E5352B;
+  --aviax-text: #FFEBD2;
+  --aviax-muted: #C7AFA6;
+  --aviax-green: #3FA34D;
+  --aviax-line: rgb(255 235 210 / 12%);
 }
 
 * {
@@ -40,9 +40,10 @@ body {
   min-height: 100dvh;
   margin: 0;
   background:
-    linear-gradient(180deg, rgb(18 13 23 / 47%) 0%, rgb(19 13 23 / 93%) 340px, #17101b 680px),
-    url("/aviax-clouds.jpg") center top / min(100% auto, 1440px) 420px no-repeat,
-    #17101b;
+    linear-gradient(180deg, rgb(43 18 20 / 47%) 0%, rgb(43 18 20 / 93%) 340px, #2B1214 680px),
+    radial-gradient(ellipse at 14% 90px, rgb(255 222 196 / 7%), transparent 30%),
+    radial-gradient(ellipse at 83% 175px, rgb(255 222 196 / 5%), transparent 24%),
+    #2B1214;
 }
 
 button,
@@ -58,7 +59,7 @@ button {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible {
-  outline: 3px solid #ffc46f;
+  outline: 3px solid #F7931E;
   outline-offset: 3px;
 }
 
@@ -2004,10 +2005,48 @@ a {
   text-underline-offset: 3px;
 }
 
+.av-terms-page {
+  display: grid;
+  gap: 13px;
+  margin-top: 12px;
+  padding: 20px;
+}
+
+.av-terms-page h1 {
+  margin: 0;
+  color: var(--aviax-text);
+  font-size: 26px;
+}
+
+.av-terms-page p {
+  margin: 0;
+  color: var(--aviax-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.av-terms-page .av-terms-todo {
+  padding: 12px;
+  border: 1px solid rgb(247 147 30 / 35%);
+  border-radius: 12px;
+  color: var(--aviax-gold);
+}
+
 .av-admin-page {
   display: grid;
   gap: 13px;
   padding-bottom: 30px;
+}
+
+.aviax-app p,
+.aviax-app li,
+.aviax-app label {
+  font-size: max(14px, 1em);
+}
+
+.aviax-app button {
+  min-height: 48px;
+  font-size: max(14px, 1em);
 }
 
 .av-admin-header {

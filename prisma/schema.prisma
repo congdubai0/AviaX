@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MissionStatus {
+  not_started
+  checking
+  done
+}
+
+enum MissionType {
+  JOIN_CHANNEL
+  VISIT_LINK
+  DEMO_TIMER
+  SOFT_CHECK
+}
+
+enum ReferralStatus {
+  pending
+  qualified
+}
+
+model User {
+  id               String         @id @default(uuid()) @db.Uuid
+  telegramId       String         @unique @map("telegram_id")
+  username         String?
+  firstName        String         @map("first_name")
+  groupCode        String?        @map("group_code")
+  referralCode     String         @unique @map("referral_code")
+  referredById     String?        @map("referred_by") @db.Uuid
+  ageConfirmedAt   DateTime?      @map("age_confirmed_at") @db.Timestamptz(3)
+  botStartedAt     DateTime?      @map("bot_started_at") @db.Timestamptz(3)
+  isBlocked        Boolean        @default(false) @map("is_blocked")
+  lastSeenIpHash   String?        @map("last_seen_ip_hash")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  referrer         User?          @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referredUsers    User[]         @relation("UserReferrals")
+  missions         UserMission[]
+  ledgerEntries    PointsLedger[]
+  dailyFlights     DailyFlight[]
+  sentReferrals    Referral[]     @relation("ReferralReferrer")
+  receivedReferral Referral?      @relation("ReferralReferred")
+  linkClicks       LinkClick[]
+
+  @@index([referredById])
+  @@index([lastSeenIpHash])
+  @@map("users")
+}
+
+model Mission {
+  id                String         @id @default(uuid()) @db.Uuid
+  key               String         @unique
+  titleId           String         @map("title_id")
+  points            Int
+  type              MissionType
+  orderIndex        Int            @map("order_index")
+  requiresMissionId String?        @map("requires_mission_id") @db.Uuid
+  isActive          Boolean        @default(true) @map("is_active")
+  config            Json           @default("{}")
+  prerequisite      Mission?       @relation("MissionPrerequisite", fields: [requiresMissionId], references: [id], onDelete: SetNull)
+  dependents        Mission[]      @relation("MissionPrerequisite")
+  userMissions      UserMission[]
+  ledgerEntries     PointsLedger[]
+  linkClicks        LinkClick[]
+
+  @@index([isActive, orderIndex])
+  @@map("missions")
+}
+
+model UserMission {
+  id          String        @id @default(uuid()) @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  missionId   String        @map("mission_id") @db.Uuid
+  status      MissionStatus @default(not_started)
+  startedAt   DateTime?     @map("started_at") @db.Timestamptz(3)
+  completedAt DateTime?     @map("completed_at") @db.Timestamptz(3)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mission     Mission       @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, missionId])
+  @@index([userId, status])
+  @@map("user_missions")
+}
+
+model PointsLedger {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  delta     Int
+  reason    String
+  refType   String   @map("ref_type")
+  refId     String   @map("ref_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  mission   Mission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  missionId String?  @map("mission_id") @db.Uuid
+
+  @@unique([userId, reason, refType, refId])
+  @@index([createdAt, userId])
+  @@index([userId, createdAt])
+  @@map("points_ledger")
+}
+
+model DailyFlight {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  dateUtc7  DateTime @map("date_utc7") @db.Date
+  points    Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateUtc7])
+  @@index([userId, dateUtc7])
+  @@map("daily_flights")
+}
+
+model Referral {
+  id          String         @id @default(uuid()) @db.Uuid
+  referrerId  String         @map("referrer_id") @db.Uuid
+  referredId  String         @unique @map("referred_id") @db.Uuid
+  status      ReferralStatus @default(pending)
+  qualifiedAt DateTime?      @map("qualified_at") @db.Timestamptz(3)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  referrer    User           @relation("ReferralReferrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred    User           @relation("ReferralReferred", fields: [referredId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId, createdAt])
+  @@index([referrerId, qualifiedAt])
+  @@map("referrals")
+}
+
+model LinkClick {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  missionId String   @map("mission_id") @db.Uuid
+  clickedAt DateTime @default(now()) @map("clicked_at") @db.Timestamptz(3)
+  ipHash    String?  @map("ip_hash")
+  userAgent String?  @map("user_agent")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mission   Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId, clickedAt])
+  @@index([userId, clickedAt])
+  @@map("link_clicks")
+}
+
+model WeeklyPeriod {
+  id       String         @id @default(uuid()) @db.Uuid
+  startsAt DateTime       @map("starts_at") @db.Timestamptz(3)
+  endsAt   DateTime       @map("ends_at") @db.Timestamptz(3)
+  closedAt DateTime?      @map("closed_at") @db.Timestamptz(3)
+  results  PeriodResult[]
+
+  @@unique([startsAt, endsAt])
+  @@index([startsAt, endsAt])
+  @@map("weekly_periods")
+}
+
+model PeriodResult {
+  id         String       @id @default(uuid()) @db.Uuid
+  periodId   String       @map("period_id") @db.Uuid
+  userId     String       @map("user_id") @db.Uuid
+  rank       Int
+  points     Int
+  reachedAt  DateTime?    @map("reached_at") @db.Timestamptz(3)
+  notifiedAt DateTime?    @map("notified_at") @db.Timestamptz(3)
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  period     WeeklyPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, rank])
+  @@unique([periodId, userId])
+  @@map("period_results")
+}
+
+model Setting {
+  key   String @id
+  value Json
+
+  @@map("settings")
+}
+
+model SecurityEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  kind      String
+  details   Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([kind, createdAt])
+  @@map("security_events")
+}

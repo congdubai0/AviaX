@@ -1,12 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-
-const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1];
-const base = process.env.GITHUB_ACTIONS === "true" && repositoryName
-  ? `/${repositoryName}/`
-  : "/";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  base,
-  plugins: [react()],
+  base: "/AviaX/",
+  plugins: [react(), tailwindcss()],
 });

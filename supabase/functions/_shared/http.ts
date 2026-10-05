@@ -54,7 +54,7 @@ export function jsonResponse(body: unknown, status = 200): Response {
 
 export function errorResponse(error: unknown): Response {
   if (error instanceof TelegramAuthError) {
-    return jsonResponse({ error: error.message, code: error.code }, 401);
+    return jsonResponse({ error: error.message, code: error.code }, error.status);
   }
   console.error("Supabase Edge Function failed", error);
   return jsonResponse({ error: "Terjadi kendala pada server. Coba lagi nanti.", code: "INTERNAL_ERROR" }, 500);
@@ -102,6 +102,15 @@ export async function authenticate(request: Request): Promise<RequestContext> {
   const profile = user as AuthenticatedUser;
   if (profile.is_banned) {
     throw new TelegramAuthError("Akun ini tidak dapat mengakses AviaX.", "USER_BANNED");
+  }
+  const { data: withinLimit, error: limitError } = await getAdminClient().rpc("consume_rate_limit", {
+    p_bucket_key: `${profile.id}:authenticated-api`,
+    p_max_requests: 120,
+    p_window_seconds: 60,
+  });
+  if (limitError) throw new Error(`Authentication rate limit failed: ${limitError.message}`);
+  if (!withinLimit) {
+    throw new TelegramAuthError("Terlalu banyak permintaan. Coba lagi sebentar.", "RATE_LIMITED", 429);
   }
   return { identity, user: profile, ipHash };
 }

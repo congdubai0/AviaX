@@ -615,6 +615,10 @@ declare
   v_start timestamptz;
 begin
   if p_starts_at is null then raise exception 'campaign_start_required'; end if;
+  perform pg_advisory_xact_lock(hashtext('aviax_campaign_creation'));
+  if exists (select 1 from public.seasons) then
+    raise exception 'campaign_already_created';
+  end if;
   insert into public.seasons(name, starts_at, ends_at)
   values (
     'AviaX ' || to_char(p_starts_at at time zone 'Asia/Jakarta', 'YYYY-MM-DD'),
@@ -817,6 +821,8 @@ insert into public.settings(key, value) values
   ('social_links', '{"facebook":"","instagram":"","tiktok":"","TODO":"Set only the official social links used in Indonesia."}'::jsonb),
   ('bot_username', '{"value":"","TODO":"Set the Telegram bot username."}'::jsonb),
   ('app_short_name', '{"value":"","TODO":"Set the Telegram Mini App short name."}'::jsonb),
+  ('terms_url', '{"value":"","TODO":"Set the reviewed Syarat & Ketentuan URL before launch."}'::jsonb),
+  ('terms_content', '{"value":"","TODO":"Replace the in-app terms placeholder with legally reviewed Bahasa Indonesia content."}'::jsonb),
   ('admin_telegram_ids', '[]'::jsonb),
   ('daily_checkin_points', '10'::jsonb),
   ('flight_min_points', '10'::jsonb),

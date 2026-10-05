@@ -7,6 +7,18 @@ export class ApiError extends Error {
   }
 }
 
+function getDeviceFingerprint(): string | null {
+  try {
+    const existing = window.localStorage.getItem("aviax-device-id");
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    window.localStorage.setItem("aviax-device-id", created);
+    return created;
+  } catch {
+    return null;
+  }
+}
+
 export async function invokeApi<T>(
   functionName: string,
   body: Record<string, unknown> = {},
@@ -16,9 +28,13 @@ export async function invokeApi<T>(
     throw new ApiError("Buka aplikasi dari Telegram untuk melanjutkan.", 401, "TELEGRAM_INIT_DATA_REQUIRED");
   }
 
+  const deviceFingerprint = getDeviceFingerprint();
   const { data, error } = await getSupabaseClient().functions.invoke<T>(functionName, {
     body,
-    headers: { "X-Telegram-Init-Data": initData },
+    headers: {
+      "X-Telegram-Init-Data": initData,
+      ...(deviceFingerprint ? { "X-Device-Fingerprint": deviceFingerprint } : {}),
+    },
   });
 
   if (error) {
