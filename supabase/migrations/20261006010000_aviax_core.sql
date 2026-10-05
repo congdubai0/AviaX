@@ -331,13 +331,6 @@ declare
   v_user_mission public.user_missions;
   v_week_id uuid;
   v_awarded boolean;
-  v_task_count integer;
-  v_referral public.referrals;
-  v_timezone text := 'Asia/Jakarta';
-  v_daily_limit integer := 10;
-  v_reward_points integer := 100;
-  v_today date;
-  v_rewarded_today integer;
 begin
   select * into v_mission from public.missions
   where code = p_mission_code and active;
@@ -382,45 +375,7 @@ begin
     into v_awarded;
 
   if p_mission_code <> 'open_app' then
-    select count(*)::integer into v_task_count
-    from public.user_missions um
-    join public.missions m on m.code = um.mission_code
-    where um.user_id = p_user_id and um.status = 'done' and m.kind <> 'open_app';
-
-    if v_task_count >= 2 then
-      select * into v_referral from public.referrals
-      where invitee_id = p_user_id and not rewarded
-      for update;
-
-      if found then
-        perform 1 from public.users where id = v_referral.inviter_id for update;
-        select coalesce((value #>> '{}')::text, 'Asia/Jakarta')
-          into v_timezone from public.settings where key = 'timezone';
-        select coalesce((value #>> '{}')::integer, 10)
-          into v_daily_limit from public.settings where key = 'referral_daily_limit';
-        select coalesce((value #>> '{}')::integer, 100)
-          into v_reward_points from public.settings where key = 'referral_reward_points';
-        v_today := (now() at time zone v_timezone)::date;
-        select count(*)::integer into v_rewarded_today
-        from public.referrals
-        where inviter_id = v_referral.inviter_id
-          and rewarded
-          and rewarded_at >= (v_today::timestamp at time zone v_timezone)
-          and rewarded_at < ((v_today + 1)::timestamp at time zone v_timezone);
-
-        if v_rewarded_today < v_daily_limit then
-          update public.referrals
-          set completed_missions = v_task_count, rewarded = true, rewarded_at = now()
-          where id = v_referral.id;
-          perform public.award_points(
-            v_referral.inviter_id, v_week_id, v_reward_points, 'referral', v_referral.id::text
-          );
-        else
-          update public.referrals set completed_missions = v_task_count
-          where id = v_referral.id;
-        end if;
-      end if;
-    end if;
+    perform public.evaluate_referral_reward(p_user_id, v_week_id);
   end if;
 
   return jsonb_build_object(
@@ -456,6 +411,293 @@ begin
 end;
 $$;
 
+create or replace function public.evaluate_referral_reward(
+  p_invitee_id uuid,
+  p_week_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_task_count integer;
+  v_referral public.referrals;
+  v_timezone text := 'Asia/Jakarta';
+  v_daily_limit integer := 10;
+  v_reward_points integer := 100;
+  v_today date;
+  v_rewarded_today integer;
+begin
+  select count(*)::integer into v_task_count
+  from public.user_missions um
+  join public.missions m on m.code = um.mission_code
+  where um.user_id = p_invitee_id and um.status = 'done' and m.kind <> 'open_app';
+  if v_task_count < 2 then return; end if;
+
+  select * into v_referral from public.referrals
+  where invitee_id = p_invitee_id and not rewarded
+  for update;
+  if not found then return; end if;
+
+  perform 1 from public.users where id = v_referral.inviter_id for update;
+  select coalesce((value #>> '{}')::text, 'Asia/Jakarta')
+    into v_timezone from public.settings where key = 'timezone';
+  select coalesce((value #>> '{}')::integer, 10)
+    into v_daily_limit from public.settings where key = 'referral_daily_limit';
+  select coalesce((value #>> '{}')::integer, 100)
+    into v_reward_points from public.settings where key = 'referral_reward_points';
+  v_today := (now() at time zone v_timezone)::date;
+  select count(*)::integer into v_rewarded_today
+  from public.referrals
+  where inviter_id = v_referral.inviter_id
+    and rewarded
+    and rewarded_at >= (v_today::timestamp at time zone v_timezone)
+    and rewarded_at < ((v_today + 1)::timestamp at time zone v_timezone);
+
+  update public.referrals
+  set completed_missions = v_task_count,
+      rewarded = v_rewarded_today < v_daily_limit,
+      rewarded_at = case when v_rewarded_today < v_daily_limit then now() else null end
+  where id = v_referral.id;
+  if v_rewarded_today < v_daily_limit then
+    perform public.award_points(
+      v_referral.inviter_id, p_week_id, v_reward_points, 'referral', v_referral.id::text
+    );
+  end if;
+end;
+$$;
+
+create or replace function public.record_daily_checkin(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_timezone text := 'Asia/Jakarta';
+  v_today date;
+  v_previous_streak integer;
+  v_streak integer;
+  v_points integer := 10;
+  v_bonus integer := 100;
+  v_week_id uuid;
+  v_checkin public.checkins;
+  v_awarded boolean;
+  v_bonus_awarded boolean := false;
+begin
+  perform 1 from public.users
+  where id = p_user_id and accepted_terms_at is not null and not is_banned
+  for update;
+  if not found then raise exception 'age_confirmation_required'; end if;
+
+  select coalesce((value #>> '{}')::text, 'Asia/Jakarta')
+    into v_timezone from public.settings where key = 'timezone';
+  select coalesce((value #>> '{}')::integer, 10)
+    into v_points from public.settings where key = 'daily_checkin_points';
+  select coalesce((value #>> '{}')::integer, 100)
+    into v_bonus from public.settings where key = 'streak_bonus_points';
+  v_today := (now() at time zone v_timezone)::date;
+  select id into v_week_id from public.weeks
+  where now() >= starts_at and now() < ends_at
+  order by starts_at desc limit 1;
+  if v_week_id is null then raise exception 'campaign_week_not_configured'; end if;
+
+  select streak into v_previous_streak from public.checkins
+  where user_id = p_user_id and checkin_date = v_today - 1;
+  v_streak := case
+    when v_previous_streak is null or v_previous_streak >= 7 then 1
+    else v_previous_streak + 1
+  end;
+
+  insert into public.checkins(user_id, checkin_date, streak)
+  values (p_user_id, v_today, v_streak)
+  on conflict (user_id, checkin_date) do nothing
+  returning * into v_checkin;
+  if not found then
+    select * into v_checkin from public.checkins
+    where user_id = p_user_id and checkin_date = v_today;
+    return jsonb_build_object(
+      'awarded', false, 'points', 0, 'bonusPoints', 0,
+      'date', v_today, 'streak', v_checkin.streak
+    );
+  end if;
+
+  insert into public.user_missions(user_id, mission_code, status, started_at, completed_at)
+  values (p_user_id, 'daily_checkin', 'done', now(), now())
+  on conflict (user_id, mission_code) do update
+    set status = 'done', completed_at = now();
+
+  select public.award_points(p_user_id, v_week_id, v_points, 'daily_checkin', v_today::text)
+    into v_awarded;
+  if v_streak = 7 then
+    select public.award_points(
+      p_user_id, v_week_id, v_bonus, 'daily_checkin_streak', v_today::text
+    ) into v_bonus_awarded;
+  end if;
+  perform public.evaluate_referral_reward(p_user_id, v_week_id);
+
+  return jsonb_build_object(
+    'awarded', coalesce(v_awarded, false),
+    'points', case when coalesce(v_awarded, false) then v_points else 0 end,
+    'bonusPoints', case when v_bonus_awarded then v_bonus else 0 end,
+    'date', v_today,
+    'streak', v_streak
+  );
+end;
+$$;
+
+create or replace function public.record_daily_flight(p_user_id uuid, p_points integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_timezone text := 'Asia/Jakarta';
+  v_today date;
+  v_min integer := 10;
+  v_max integer := 50;
+  v_week_id uuid;
+  v_flight public.daily_flights;
+  v_awarded boolean;
+begin
+  perform 1 from public.users
+  where id = p_user_id and accepted_terms_at is not null and not is_banned
+  for update;
+  if not found then raise exception 'age_confirmation_required'; end if;
+
+  select coalesce((value #>> '{}')::text, 'Asia/Jakarta')
+    into v_timezone from public.settings where key = 'timezone';
+  select coalesce((value #>> '{}')::integer, 10)
+    into v_min from public.settings where key = 'flight_min_points';
+  select coalesce((value #>> '{}')::integer, 50)
+    into v_max from public.settings where key = 'flight_max_points';
+  if p_points < v_min or p_points > v_max then raise exception 'flight_points_out_of_range'; end if;
+  v_today := (now() at time zone v_timezone)::date;
+  select id into v_week_id from public.weeks
+  where now() >= starts_at and now() < ends_at
+  order by starts_at desc limit 1;
+  if v_week_id is null then raise exception 'campaign_week_not_configured'; end if;
+
+  insert into public.daily_flights(user_id, flight_date, points)
+  values (p_user_id, v_today, p_points)
+  on conflict (user_id, flight_date) do nothing
+  returning * into v_flight;
+  if not found then
+    select * into v_flight from public.daily_flights
+    where user_id = p_user_id and flight_date = v_today;
+    return jsonb_build_object(
+      'awarded', false, 'points', v_flight.points, 'bonusPoints', 0, 'date', v_today
+    );
+  end if;
+
+  select public.award_points(p_user_id, v_week_id, p_points, 'daily_flight', v_today::text)
+    into v_awarded;
+  return jsonb_build_object(
+    'awarded', coalesce(v_awarded, false),
+    'points', case when coalesce(v_awarded, false) then p_points else v_flight.points end,
+    'bonusPoints', 0,
+    'date', v_today
+  );
+end;
+$$;
+
+create or replace function public.create_campaign_weeks(p_starts_at timestamptz)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_season_id uuid;
+  v_week integer;
+  v_start timestamptz;
+begin
+  if p_starts_at is null then raise exception 'campaign_start_required'; end if;
+  insert into public.seasons(name, starts_at, ends_at)
+  values (
+    'AviaX ' || to_char(p_starts_at at time zone 'Asia/Jakarta', 'YYYY-MM-DD'),
+    p_starts_at,
+    p_starts_at + interval '28 days'
+  )
+  returning id into v_season_id;
+
+  for v_week in 1..4 loop
+    v_start := p_starts_at + ((v_week - 1) * interval '7 days');
+    insert into public.weeks(season_id, week_number, starts_at, ends_at, is_final)
+    values (
+      v_season_id,
+      v_week,
+      v_start,
+      v_start + interval '7 days',
+      v_week = 4
+    );
+  end loop;
+
+  insert into public.settings(key, value, updated_at)
+  values ('campaign_start_at', to_jsonb(p_starts_at), now())
+  on conflict (key) do update set value = excluded.value, updated_at = now();
+  return v_season_id;
+end;
+$$;
+
+create or replace function public.get_week_leaderboard(p_week_id uuid, p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_entries jsonb;
+  v_me jsonb;
+begin
+  with ranked as (
+    select
+      row_number() over (order by lb.points desc, lb.reached_at asc, lb.user_id asc)::integer as rank,
+      lb.user_id,
+      lb.points
+    from public.leaderboard_weekly lb
+    where lb.week_id = p_week_id
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'rank', ranked.rank,
+        'displayName', '@' || left(
+          coalesce(nullif(u.username, ''), nullif(u.first_name, ''), 'player'),
+          2
+        ) || '***',
+        'points', ranked.points
+      ) order by ranked.rank
+    ),
+    '[]'::jsonb
+  )
+  into v_entries
+  from ranked
+  join public.users u on u.id = ranked.user_id
+  where ranked.rank <= 10;
+
+  with ranked as (
+    select
+      row_number() over (order by lb.points desc, lb.reached_at asc, lb.user_id asc)::integer as rank,
+      lb.user_id,
+      lb.points
+    from public.leaderboard_weekly lb
+    where lb.week_id = p_week_id
+  )
+  select case when ranked.user_id is null
+    then jsonb_build_object('rank', null, 'points', 0)
+    else jsonb_build_object('rank', ranked.rank, 'points', ranked.points)
+  end
+  into v_me
+  from (select p_user_id as user_id) requested
+  left join ranked on ranked.user_id = requested.user_id;
+
+  return jsonb_build_object('entries', v_entries, 'me', coalesce(v_me, '{"rank":null,"points":0}'::jsonb));
+end;
+$$;
+
 revoke all on function public.award_points(uuid, uuid, integer, text, text) from public, anon, authenticated;
 grant execute on function public.award_points(uuid, uuid, integer, text, text) to service_role;
 revoke all on function public.bootstrap_telegram_user(bigint, text, text, text, text, text, text) from public, anon, authenticated;
@@ -466,6 +708,16 @@ revoke all on function public.consume_rate_limit(text, integer, integer) from pu
 grant execute on function public.consume_rate_limit(text, integer, integer) to service_role;
 revoke all on function public.start_user_mission(uuid, text) from public, anon, authenticated;
 grant execute on function public.start_user_mission(uuid, text) to service_role;
+revoke all on function public.evaluate_referral_reward(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.evaluate_referral_reward(uuid, uuid) to service_role;
+revoke all on function public.record_daily_checkin(uuid) from public, anon, authenticated;
+grant execute on function public.record_daily_checkin(uuid) to service_role;
+revoke all on function public.record_daily_flight(uuid, integer) from public, anon, authenticated;
+grant execute on function public.record_daily_flight(uuid, integer) to service_role;
+revoke all on function public.create_campaign_weeks(timestamptz) from public, anon, authenticated;
+grant execute on function public.create_campaign_weeks(timestamptz) to service_role;
+revoke all on function public.get_week_leaderboard(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.get_week_leaderboard(uuid, uuid) to service_role;
 revoke all on public.rate_limits from public, anon, authenticated;
 
 create or replace view public.leaderboard_weekly

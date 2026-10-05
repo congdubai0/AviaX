@@ -30,13 +30,19 @@ function routeRequest(path: string, options: RequestInit): { name: string; body:
   if (pathname === "flight") {
     return { name: "daily-flight", body: { action: options.method === "POST" ? "fly" : "status" } };
   }
-  if (pathname === "leaderboard") return { name: "leaderboard", body: {} };
   if (pathname === "referrals") {
+    const url = new URL(path, window.location.origin);
     return { name: "referral", body: { action: "list", offset: Number(url.searchParams.get("offset") ?? "0") } };
   }
-
+  if (pathname === "leaderboard") return {
+    name: "leaderboard",
+    body: { action: "read" },
+  };
   const missionMatch = pathname.match(/^missions\/([^/]+)\/(start|verify)$/);
   if (missionMatch) {
+    if (missionMatch[1] === "daily_checkin" && missionMatch[2] === "start") {
+      return { name: "daily-flight", body: { action: "checkin" } };
+    }
     return {
       name: missionMatch[2] === "start"
         ? "mission-start"

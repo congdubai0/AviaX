@@ -43,7 +43,8 @@ type FlightAward = {
 type LeaderboardResponse = {
   entries: Array<{ rank: number; displayName: string; points: number }>;
   me: { rank: number | null; points: number };
-  period: { startsAt: string; endsAt: string; secondsRemaining: number };
+  period: { startsAt: string | null; endsAt: string | null; secondsRemaining: number; configured?: boolean };
+  prizeText?: string | null;
 };
 type ReferralsPage = {
   referralUrl: string;
@@ -52,6 +53,12 @@ type ReferralsPage = {
   totalFriends: number;
   nextOffset: number | null;
   friends: Array<{ displayName: string; status: "joined" | "qualified"; joinedAt: string }>;
+};
+type CheckinAward = {
+  awarded: boolean;
+  points: number;
+  bonusPoints: number;
+  status: "done";
 };
 type MissionStart = {
   status: MissionStatus;
@@ -242,7 +249,9 @@ function App() {
   const leaderboard = useQuery({
     queryKey: queryKeys.leaderboard,
     queryFn: () => apiRequest<LeaderboardResponse>("/api/leaderboard"),
-    enabled: ageConfirmed,
+    enabled: ageConfirmed && screen === "leaderboard",
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
   });
   const referrals = useInfiniteQuery({
     queryKey: queryKeys.referrals,
@@ -258,6 +267,13 @@ function App() {
     }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.bootstrap }),
   });
+  const checkinMutation = useMutation({
+    mutationFn: () => apiRequest<CheckinAward>("/api/missions/daily_checkin/start", { method: "POST" }),
+    onSuccess: async () => {
+      await refreshPlayerData();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.flight });
+    },
+  });
   const flightMutation = useMutation({
     mutationFn: () => apiRequest<FlightAward>("/api/flight", { method: "POST" }),
     onSuccess: async (result) => {
@@ -266,6 +282,7 @@ function App() {
         queryClient.invalidateQueries({ queryKey: queryKeys.flight }),
         queryClient.invalidateQueries({ queryKey: queryKeys.bootstrap }),
         queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.missions }),
       ]);
     },
   });
@@ -365,6 +382,7 @@ function App() {
       queryClient.invalidateQueries({ queryKey: queryKeys.missions }),
       queryClient.invalidateQueries({ queryKey: queryKeys.bootstrap }),
       queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.flight }),
     ]);
   }
 
@@ -373,6 +391,16 @@ function App() {
     setMissionBusy(mission.key);
     setMissionMessage((current) => ({ ...current, [mission.key]: "" }));
     try {
+      if (mission.key === "daily_checkin") {
+        const result = await checkinMutation.mutateAsync();
+        setMissionMessage((current) => ({
+          ...current,
+          [mission.key]: result.awarded
+            ? `Berhasil absen! +${formatNumber(result.points + result.bonusPoints)} poin.`
+            : "Kamu sudah absen hari ini.",
+        }));
+        return;
+      }
       if (mission.status === "not_started") {
         const started = await apiRequest<MissionStart>(`/api/missions/${encodeURIComponent(mission.key)}/start`, {
           method: "POST",
@@ -435,7 +463,7 @@ function App() {
       loading={missions.isPending}
       error={missions.error}
       onRetry={() => missions.refetch()}
-      prizeText={bootstrap.data.prizeText}
+      prizeText={leaderboard.data?.prizeText ?? null}
       periodEndsAt={bootstrap.data.period.endsAt}
       periodSeconds={periodSeconds}
       timers={missionTimers}
