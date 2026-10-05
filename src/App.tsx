@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminRequest, apiRequest, ApiError } from "./api";
 
@@ -73,22 +73,36 @@ type MissionVerification = {
   retryAfterSeconds?: number;
   message?: string;
 };
-type AdminMission = {
-  id: string;
-  key: string;
-  title: string;
-  points: number;
-  active: boolean;
-  type: MissionType;
-  config: Record<string, unknown>;
-};
 type AdminMetrics = {
   totals: { users: number; points: number; clicks: number };
-  missionCounts: Array<{ missionId: string; status: MissionStatus; _count: { _all: number } }>;
-  prizeText: string;
-  periodWeeks: number;
+  flaggedUsers: Array<{
+    telegramId: number;
+    username: string | null;
+    firstName: string;
+    isFlagged: boolean;
+    isBanned: boolean;
+    createdAt: string;
+  }>;
+  dailyDraws: Array<{
+    date: string;
+    points: number;
+    telegramId: number | null;
+    username: string | null;
+    firstName: string | null;
+  }>;
+  weeks: Array<{
+    weekNumber: number;
+    isFinal: boolean;
+    entries: Array<{ rank: number; displayName: string; points: number }>;
+  }>;
+  rewardConfiguration: {
+    weekly?: { top_1?: number; top_2?: number; top_3?: number };
+    daily_draw?: { per_day_usd?: number };
+    final_week?: { top_1?: number; top_2?: number; top_3?: number };
+    total_usd?: number;
+    TODO?: string;
+  };
   timezone: string;
-  missions: AdminMission[];
 };
 
 const queryKeys = {
@@ -230,7 +244,7 @@ function App() {
   const [missionBusy, setMissionBusy] = useState<string | null>(null);
   const [missionMessage, setMissionMessage] = useState<Record<string, string>>({});
   const [flightAward, setFlightAward] = useState<FlightAward | null>(null);
-  const isAdminPath = window.location.pathname === "/admin";
+  const isAdminPath = window.location.pathname === "/admin" || window.location.hash === "#/admin";
   const bootstrap = useQuery({
     queryKey: queryKeys.bootstrap,
     queryFn: () => apiRequest<Bootstrap>("/api/bootstrap"),
@@ -970,55 +984,58 @@ function FriendsPage({
 }
 
 function AdminPage() {
-  const [secret, setSecret] = useState(() => sessionStorage.getItem("aviax-admin-secret") ?? "");
-  const [inputSecret, setInputSecret] = useState(secret);
   const [message, setMessage] = useState("");
   const [telegramId, setTelegramId] = useState("");
+  const [campaignStart, setCampaignStart] = useState("");
   const queryClient = useQueryClient();
   const metrics = useQuery({
-    queryKey: ["admin-metrics", secret],
-    queryFn: () => adminRequest<AdminMetrics>("/api/admin/metrics", secret),
-    enabled: Boolean(secret),
+    queryKey: ["admin-metrics"],
+    queryFn: () => adminRequest<AdminMetrics>("/api/admin/metrics", ""),
     retry: false,
   });
-  const settingsMutation = useMutation({
-    mutationFn: (values: { prizeText: string; periodWeeks: number; timezone: string }) =>
-      adminRequest<{ saved: boolean }>("/api/admin/settings", secret, { method: "PATCH", body: JSON.stringify(values) }),
+  const userMutation = useMutation({
+    mutationFn: (values: { flagged: boolean; banned: boolean }) =>
+      adminRequest<{ saved: boolean }>(`/api/admin/users/${encodeURIComponent(telegramId)}`, "", {
+        method: "PATCH",
+        body: JSON.stringify(values),
+      }),
     onSuccess: async () => {
-      setMessage("Pengaturan berhasil disimpan.");
-      await queryClient.invalidateQueries({ queryKey: ["admin-metrics", secret] });
+      setMessage("Status akun berhasil diperbarui.");
+      setTelegramId("");
+      await queryClient.invalidateQueries({ queryKey: ["admin-metrics"] });
     },
   });
-  const userMutation = useMutation({
-    mutationFn: (blocked: boolean) => adminRequest<{ saved: boolean }>(`/api/admin/users/${encodeURIComponent(telegramId)}`, secret, {
-      method: "PATCH",
-      body: JSON.stringify({ blocked }),
+  const drawMutation = useMutation({
+    mutationFn: () => adminRequest<{ date: string; winnerId: string | null; alreadyDrawn: boolean }>("/api/admin/metrics", "", {
+      method: "POST",
+      body: JSON.stringify({ action: "daily_draw" }),
     }),
-    onSuccess: () => { setMessage("Status akun berhasil diperbarui."); setTelegramId(""); },
+    onSuccess: async (result) => {
+      setMessage(result.winnerId ? `Pengundian ${result.date} selesai.` : "Belum ada peserta yang memenuhi syarat hari ini.");
+      await queryClient.invalidateQueries({ queryKey: ["admin-metrics"] });
+    },
+  });
+  const campaignMutation = useMutation({
+    mutationFn: () => adminRequest<{ saved: boolean }>("/api/admin/settings", "", {
+      method: "PATCH",
+      body: JSON.stringify({ startsAt: new Date(campaignStart).toISOString() }),
+    }),
+    onSuccess: async () => {
+      setMessage("Periode kampanye empat minggu berhasil dibuat.");
+      await queryClient.invalidateQueries({ queryKey: ["admin-metrics"] });
+    },
   });
 
-  function submitSecret(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!inputSecret.trim()) return;
-    sessionStorage.setItem("aviax-admin-secret", inputSecret.trim());
-    setSecret(inputSecret.trim());
-    setMessage("");
-  }
-
   function exportCsv() {
-    fetch("/api/admin/export.csv", { headers: { "X-Admin-Secret": secret } }).then(async (response) => {
-      if (!response.ok) {
-        const data = await response.json() as { error?: string };
-        throw new Error(data.error ?? `Permintaan gagal (${response.status}).`);
-      }
-      const file = await response.blob();
+    adminRequest<string>("/api/admin/export.csv", "").then((csv) => {
+      const file = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(file);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "aviax-users.csv";
+      link.download = "aviax-winners.csv";
       link.click();
       URL.revokeObjectURL(url);
-      setMessage("CSV berhasil diekspor.");
+      setMessage("Daftar pemenang berhasil diekspor.");
     }).catch((error: unknown) => {
       setMessage(error instanceof Error ? error.message : "Ekspor CSV gagal.");
     });
@@ -1027,15 +1044,8 @@ function AdminPage() {
   return (
     <AppFrame>
       <div className="av-admin-page">
-        <header className="av-admin-header"><a href="/" className="av-admin-back">← AviaX</a><span className="av-eyebrow">DASHBOARD</span><h1>Panel admin</h1><p>Kelola pengaturan dan aktivitas AviaX.</p></header>
-        {!secret && (
-          <form className="av-card av-admin-login" onSubmit={submitSecret}>
-            <label>Admin secret<input autoComplete="current-password" onChange={(event) => setInputSecret(event.target.value)} type="password" value={inputSecret} /></label>
-            <button className="av-button av-button-primary" type="submit">MASUK</button>
-          </form>
-        )}
-        {secret && <button className="av-admin-logout" onClick={() => { sessionStorage.removeItem("aviax-admin-secret"); setSecret(""); setInputSecret(""); }} type="button">Keluar dari panel admin</button>}
-        {metrics.isPending && secret && <LoadingPanel label="Memuat dashboard admin..." />}
+        <header className="av-admin-header"><a href="#/" className="av-admin-back">← AviaX</a><span className="av-eyebrow">DASHBOARD</span><h1>Panel admin</h1><p>Kelola periode dan aktivitas AviaX.</p></header>
+        {metrics.isPending && <LoadingPanel label="Memuat dashboard admin..." />}
         {metrics.error && <ErrorPanel message={metrics.error.message} onRetry={() => metrics.refetch()} />}
         {metrics.data && (
           <>
@@ -1044,13 +1054,43 @@ function AdminPage() {
               <StatCard label="Total poin" value={metrics.data.totals.points} />
               <StatCard label="Klik misi" value={metrics.data.totals.clicks} />
             </div>
-            <AdminSettings key={metrics.data.timezone} settings={metrics.data} onSave={(values) => settingsMutation.mutate(values)} busy={settingsMutation.isPending} />
-            <section className="av-card av-admin-card"><p className="av-eyebrow">KELOLA AKUN</p><h2>Blokir / buka blokir</h2><label>Telegram ID<input inputMode="numeric" onChange={(event) => setTelegramId(event.target.value)} value={telegramId} /></label><div className="av-admin-actions"><button className="av-button av-button-quiet" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate(true)} type="button">Blokir</button><button className="av-button av-button-primary" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate(false)} type="button">Buka blokir</button></div></section>
-            <button className="av-button av-button-quiet av-button-wide" onClick={exportCsv} type="button">Ekspor pengguna CSV</button>
-            <div className="av-admin-missions">{metrics.data.missions.map((mission) => <AdminMissionCard key={mission.id} mission={mission} secret={secret} onSaved={() => queryClient.invalidateQueries({ queryKey: ["admin-metrics", secret] })} />)}</div>
+            <section className="av-card av-admin-card">
+              <p className="av-eyebrow">PERIODE KAMPANYE</p><h2>Jadwal empat minggu</h2>
+              {metrics.data.weeks.length > 0
+                ? <p>Kampanye aktif mencakup {metrics.data.weeks.length} minggu. Zona waktu: {metrics.data.timezone}.</p>
+                : <><p>Belum ada jadwal. Tetapkan waktu mulai sebelum membagikan aplikasi.</p><label>Mulai pada<input onChange={(event) => setCampaignStart(event.target.value)} type="datetime-local" value={campaignStart} /></label><button className="av-button av-button-primary" disabled={!campaignStart || campaignMutation.isPending} onClick={() => campaignMutation.mutate()} type="button">{campaignMutation.isPending ? "MENYIMPAN..." : "BUAT JADWAL KAMPANYE"}</button></>}
+              {metrics.data.rewardConfiguration.TODO && <p>{metrics.data.rewardConfiguration.TODO}</p>}
+            </section>
+            <section className="av-card av-admin-card">
+              <p className="av-eyebrow">HASIL MINGGUAN</p><h2>10 peringkat teratas</h2>
+              {metrics.data.weeks.length > 0 ? metrics.data.weeks.map((week) => (
+                <div className="av-admin-week" key={week.weekNumber}>
+                  <strong>Minggu {week.weekNumber}{week.isFinal ? " · Final" : ""}</strong>
+                  {week.entries.length ? week.entries.map((entry) => <p key={entry.rank}>#{entry.rank} {entry.displayName} · {formatNumber(entry.points)} poin</p>) : <p>Belum ada peserta.</p>}
+                </div>
+              )) : <p>Jadwal minggu belum dibuat.</p>}
+            </section>
+            <section className="av-card av-admin-card">
+              <p className="av-eyebrow">MODERASI</p><h2>Akun yang ditandai</h2>
+              <label>Telegram ID<input inputMode="numeric" onChange={(event) => setTelegramId(event.target.value)} value={telegramId} /></label>
+              <div className="av-admin-actions">
+                <button className="av-button av-button-quiet" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: true, banned: false })} type="button">Tandai</button>
+                <button className="av-button av-button-quiet" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: true, banned: true })} type="button">Tandai &amp; blokir</button>
+                <button className="av-button av-button-primary" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: false, banned: false })} type="button">Pulihkan</button>
+              </div>
+              {metrics.data.flaggedUsers.length
+                ? metrics.data.flaggedUsers.map((user) => <p key={user.telegramId}>ID {user.telegramId} · {user.username ? `@${user.username}` : user.firstName} · {user.isBanned ? "Diblokir" : "Ditandai"}</p>)
+                : <p>Tidak ada akun yang ditandai.</p>}
+            </section>
+            <section className="av-card av-admin-card">
+              <p className="av-eyebrow">UNDIAN HARIAN</p><h2>Peserta hari ini</h2>
+              <button className="av-button av-button-primary" disabled={drawMutation.isPending} onClick={() => drawMutation.mutate()} type="button">{drawMutation.isPending ? "MENGUNDI..." : "UNDI PEMENANG HARI INI"}</button>
+              {metrics.data.dailyDraws.slice(0, 10).map((draw) => <p key={draw.date}>{draw.date} · {draw.username ? `@${draw.username}` : draw.firstName ?? "Tidak ada pemenang"} · ${formatNumber(draw.points)}</p>)}
+            </section>
+            <button className="av-button av-button-quiet av-button-wide" onClick={exportCsv} type="button">Ekspor daftar pemenang CSV</button>
           </>
         )}
-        {(message || settingsMutation.error || userMutation.error) && <p className={settingsMutation.error || userMutation.error ? "av-inline-error" : "av-admin-message"} role="status">{message || settingsMutation.error?.message || userMutation.error?.message}</p>}
+        {(message || userMutation.error || drawMutation.error || campaignMutation.error) && <p className={userMutation.error || drawMutation.error || campaignMutation.error ? "av-inline-error" : "av-admin-message"} role="status">{message || userMutation.error?.message || drawMutation.error?.message || campaignMutation.error?.message}</p>}
       </div>
     </AppFrame>
   );
@@ -1058,80 +1098,6 @@ function AdminPage() {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return <div className="av-admin-stat"><small>{label}</small><strong>{formatNumber(value)}</strong></div>;
-}
-
-function AdminSettings({
-  settings,
-  onSave,
-  busy,
-}: {
-  settings: AdminMetrics;
-  onSave: (values: { prizeText: string; periodWeeks: number; timezone: string }) => void;
-  busy: boolean;
-}) {
-  const [prizeText, setPrizeText] = useState(settings.prizeText);
-  const [periodWeeks, setPeriodWeeks] = useState(settings.periodWeeks);
-  const [timezone, setTimezone] = useState(settings.timezone);
-  return (
-    <form className="av-card av-admin-card" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); onSave({ prizeText, periodWeeks, timezone }); }}>
-      <p className="av-eyebrow">PENGATURAN PERIODE</p><h2>Periode &amp; hadiah</h2>
-      <label>Info hadiah<input maxLength={200} onChange={(event) => setPrizeText(event.target.value)} value={prizeText} /></label>
-      <label>Durasi periode (minggu)<input max={12} min={1} onChange={(event) => setPeriodWeeks(Number(event.target.value))} type="number" value={periodWeeks} /></label>
-      <label>Zona waktu<input maxLength={64} onChange={(event) => setTimezone(event.target.value)} value={timezone} /></label>
-      <button className="av-button av-button-primary" disabled={busy} type="submit">{busy ? "MENYIMPAN..." : "SIMPAN PENGATURAN"}</button>
-    </form>
-  );
-}
-
-function AdminMissionCard({
-  mission,
-  secret,
-  onSaved,
-}: {
-  mission: AdminMission;
-  secret: string;
-  onSaved: () => void;
-}) {
-  const [title, setTitle] = useState(mission.title);
-  const [points, setPoints] = useState(mission.points);
-  const [active, setActive] = useState(mission.active);
-  const [targetUrl, setTargetUrl] = useState(String(mission.config.target_url ?? ""));
-  const [channelUrl, setChannelUrl] = useState(String(mission.config.channel_url ?? ""));
-  const [channelId, setChannelId] = useState(String(mission.config.channel_id ?? ""));
-  const [pageUrl, setPageUrl] = useState(String(mission.config.page_url ?? ""));
-  const [minimumSeconds, setMinimumSeconds] = useState(Number(mission.config.minimum_seconds ?? 60));
-  const [error, setError] = useState("");
-  const mutation = useMutation({
-    mutationFn: () => adminRequest<{ saved: boolean }>(`/api/admin/missions/${mission.id}`, secret, {
-      method: "PATCH",
-      body: JSON.stringify({
-        title,
-        points,
-        active,
-        ...(targetUrl ? { targetUrl } : {}),
-        ...(channelUrl ? { channelUrl } : {}),
-        ...(channelId ? { channelId } : {}),
-        ...(pageUrl ? { pageUrl } : {}),
-        ...(mission.type === "DEMO_TIMER" || mission.type === "SOFT_CHECK" ? { minimumSeconds } : {}),
-      }),
-    }),
-    onSuccess: () => { setError(""); onSaved(); },
-    onError: (failure: Error) => setError(failure.message),
-  });
-  return (
-    <form className="av-card av-admin-card" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); mutation.mutate(); }}>
-      <p className="av-eyebrow">MISI · {mission.type}</p>
-      <label>Judul<input maxLength={120} onChange={(event) => setTitle(event.target.value)} value={title} /></label>
-      <label>Poin<input max={100000} min={0} onChange={(event) => setPoints(Number(event.target.value))} type="number" value={points} /></label>
-      {mission.type === "VISIT_LINK" && <label>URL tujuan HTTPS<input onChange={(event) => setTargetUrl(event.target.value)} type="url" value={targetUrl} /></label>}
-      {mission.type === "JOIN_CHANNEL" && <><label>Channel ID<input onChange={(event) => setChannelId(event.target.value)} value={channelId} /></label><label>URL channel HTTPS<input onChange={(event) => setChannelUrl(event.target.value)} type="url" value={channelUrl} /></label></>}
-      {mission.type === "SOFT_CHECK" && <label>URL halaman HTTPS<input onChange={(event) => setPageUrl(event.target.value)} type="url" value={pageUrl} /></label>}
-      {(mission.type === "DEMO_TIMER" || mission.type === "SOFT_CHECK") && <label>Waktu minimum (detik)<input max={3600} min={1} onChange={(event) => setMinimumSeconds(Number(event.target.value))} type="number" value={minimumSeconds} /></label>}
-      <label className="av-admin-checkbox"><input checked={active} onChange={(event) => setActive(event.target.checked)} type="checkbox" /> Misi aktif</label>
-      {error && <p className="av-inline-error" role="alert">{error}</p>}
-      <button className="av-button av-button-quiet" disabled={mutation.isPending} type="submit">{mutation.isPending ? "MENYIMPAN..." : "SIMPAN MISI"}</button>
-    </form>
-  );
 }
 
 export default App;

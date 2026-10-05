@@ -50,8 +50,12 @@ function routeRequest(path: string, options: RequestInit): { name: string; body:
       body: { ...body, code: decodeURIComponent(missionMatch[1]) },
     };
   }
-  if (pathname === "admin/metrics") return { name: "admin", body: { action: "metrics" } };
-  if (pathname === "admin/settings") return { name: "admin", body: { ...body, action: "save_settings" } };
+  if (pathname === "admin/metrics") {
+    return { name: "admin", body: { ...body, action: body.action ?? "metrics" } };
+  }
+  if (pathname === "admin/settings") {
+    return { name: "admin", body: { ...body, action: body.startsAt ? "save_campaign_start" : "save_settings" } };
+  }
   if (pathname === "admin/export.csv") return { name: "admin", body: { action: "export_csv" } };
   const userMatch = pathname.match(/^admin\/users\/([^/]+)$/);
   if (userMatch) return { name: "admin", body: { ...body, action: "update_user", telegramId: userMatch[1] } };
