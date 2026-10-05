@@ -698,6 +698,51 @@ begin
 end;
 $$;
 
+create or replace function public.admin_dashboard_metrics()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_users bigint;
+  v_points bigint;
+  v_clicks bigint;
+  v_flagged jsonb;
+  v_draws jsonb;
+begin
+  select count(*) into v_users from public.users;
+  select coalesce(sum(points), 0)::bigint into v_points from public.point_events;
+  select count(*) into v_clicks from public.click_logs;
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'telegramId', u.telegram_id,
+    'username', u.username,
+    'firstName', u.first_name,
+    'isFlagged', u.is_flagged,
+    'isBanned', u.is_banned,
+    'createdAt', u.created_at
+  ) order by u.created_at desc), '[]'::jsonb)
+  into v_flagged from public.users u
+  where u.is_flagged or u.is_banned;
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'date', d.draw_date,
+    'points', d.points,
+    'telegramId', u.telegram_id,
+    'username', u.username,
+    'firstName', u.first_name
+  ) order by d.draw_date desc), '[]'::jsonb)
+  into v_draws
+  from public.daily_draws d
+  left join public.users u on u.id = d.winner_id;
+
+  return jsonb_build_object(
+    'totals', jsonb_build_object('users', v_users, 'points', v_points, 'clicks', v_clicks),
+    'flaggedUsers', v_flagged,
+    'dailyDraws', v_draws
+  );
+end;
+$$;
+
 revoke all on function public.award_points(uuid, uuid, integer, text, text) from public, anon, authenticated;
 grant execute on function public.award_points(uuid, uuid, integer, text, text) to service_role;
 revoke all on function public.bootstrap_telegram_user(bigint, text, text, text, text, text, text) from public, anon, authenticated;
@@ -718,6 +763,8 @@ revoke all on function public.create_campaign_weeks(timestamptz) from public, an
 grant execute on function public.create_campaign_weeks(timestamptz) to service_role;
 revoke all on function public.get_week_leaderboard(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.get_week_leaderboard(uuid, uuid) to service_role;
+revoke all on function public.admin_dashboard_metrics() from public, anon, authenticated;
+grant execute on function public.admin_dashboard_metrics() to service_role;
 revoke all on public.rate_limits from public, anon, authenticated;
 
 create or replace view public.leaderboard_weekly
