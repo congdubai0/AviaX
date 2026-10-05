@@ -6,7 +6,7 @@ export function getAdminClient(): SupabaseClient {
   if (adminClient) return adminClient;
 
   const url = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = getServerKey();
   if (!url || !serviceRoleKey) {
     throw new Error("Supabase server configuration is incomplete.");
   }
@@ -14,6 +14,27 @@ export function getAdminClient(): SupabaseClient {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   return adminClient;
+}
+
+function getServerKey(): string | undefined {
+  const legacyKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacyKey) return legacyKey;
+
+  const secretKeys = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (!secretKeys) return undefined;
+
+  let parsedKeys: Record<string, unknown>;
+  try {
+    parsedKeys = JSON.parse(secretKeys) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error("Supabase secret keys configuration is invalid.", { cause: error });
+  }
+
+  const defaultKey = parsedKeys.default;
+  if (typeof defaultKey !== "string" || defaultKey.length === 0) {
+    throw new Error('Supabase secret keys configuration has no "default" key.');
+  }
+  return defaultKey;
 }
 
 export async function getSetting<T>(key: string): Promise<T> {

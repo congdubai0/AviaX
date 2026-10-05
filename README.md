@@ -52,10 +52,11 @@ npm run build
    $env:BOT_TOKEN = [System.Net.NetworkCredential]::new("", (Read-Host -AsSecureString "Bot token")).Password
    $env:IP_HASH_SALT = [System.Net.NetworkCredential]::new("", (Read-Host -AsSecureString "IP hash salt")).Password
    $env:REDIRECT_SIGNING_SECRET = [System.Net.NetworkCredential]::new("", (Read-Host -AsSecureString "Redirect signing secret")).Password
-   $env:SUPABASE_SERVICE_ROLE_KEY = [System.Net.NetworkCredential]::new("", (Read-Host -AsSecureString "Supabase service-role key")).Password
-   supabase secrets set "BOT_TOKEN=$env:BOT_TOKEN" "IP_HASH_SALT=$env:IP_HASH_SALT" "REDIRECT_SIGNING_SECRET=$env:REDIRECT_SIGNING_SECRET" "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" "TELEGRAM_INIT_DATA_MAX_AGE_SECONDS=86400"
-   Remove-Item Env:BOT_TOKEN, Env:IP_HASH_SALT, Env:REDIRECT_SIGNING_SECRET, Env:SUPABASE_SERVICE_ROLE_KEY
+   supabase secrets set "BOT_TOKEN=$env:BOT_TOKEN" "IP_HASH_SALT=$env:IP_HASH_SALT" "REDIRECT_SIGNING_SECRET=$env:REDIRECT_SIGNING_SECRET" "TELEGRAM_INIT_DATA_MAX_AGE_SECONDS=86400"
+   Remove-Item Env:BOT_TOKEN, Env:IP_HASH_SALT, Env:REDIRECT_SIGNING_SECRET
    ```
+
+   Supabase automatically provides the project secret API key to Edge Functions. Do not try to add it as a custom secret with a `SUPABASE_` prefix.
 
 4. Deploy all application Edge Functions:
 
