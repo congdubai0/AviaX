@@ -217,10 +217,13 @@ Deno.serve((request) => withAuthenticatedUser(request, async (context) => {
     }
     const values: { is_flagged: boolean; is_banned?: boolean } = { is_flagged: body.flagged };
     if (typeof body.banned === "boolean") values.is_banned = body.banned;
-    const { error } = await client.from("users")
+    const { data: updated, error } = await client.from("users")
       .update(values)
-      .eq("telegram_id", body.telegramId);
+      .eq("telegram_id", body.telegramId)
+      .select("telegram_id")
+      .maybeSingle();
     if (error) throw new Error(`User moderation update failed: ${error.message}`);
+    if (!updated) return jsonResponse({ error: "Akun tidak ditemukan.", code: "USER_NOT_FOUND" }, 404);
     return jsonResponse({ saved: true });
   }
   if (action === "save_settings") {

@@ -231,8 +231,8 @@ function ErrorPanel({ message, onRetry }: { message: string; onRetry?: () => voi
   return (
     <section className="av-panel av-error-panel" role="alert">
       <span className="av-alert-mark">!</span>
-      <div><h2>Belum bisa dimuat</h2><p>{message}</p></div>
-      {onRetry && <button className="av-button av-button-quiet" onClick={onRetry} type="button"><Icon name="refresh" size={16} /> Coba lagi</button>}
+      <div><h2>{id.common.unableToLoad}</h2><p>{message}</p></div>
+      {onRetry && <button className="av-button av-button-quiet" onClick={onRetry} type="button"><Icon name="refresh" size={16} /> {id.common.retry}</button>}
     </section>
   );
 }
@@ -346,20 +346,20 @@ function App() {
 
   if (isTermsPath) return <TermsPage />;
   if (isAdminPath) return <AdminPage />;
-  if (bootstrap.isPending) return <AppFrame><LoadingPanel label="Memuat akun AviaX dari Telegram..." /></AppFrame>;
+  if (bootstrap.isPending) return <AppFrame><LoadingPanel label={id.common.loadingAccount} /></AppFrame>;
   if (bootstrap.isError) {
     const message = bootstrap.error instanceof ApiError && bootstrap.error.status === 401
-      ? "Buka Mini App dari Telegram untuk memverifikasi akun. AviaX tidak membuat akun demo."
+      ? id.common.noTelegramSession
       : bootstrap.error.message;
     return (
       <AppFrame>
         <div className="av-welcome-cloud">
           <Brand />
           <div className="av-logo-large"><Icon name="plane" size={44} /></div>
-          <p className="av-eyebrow">AVIAX · TELEGRAM MINI APP</p>
-          <h1>Misi kecil.<br /><span>Semangat terbang!</span></h1>
-          <p className="av-welcome-copy">Selesaikan misi gratis, terbang setiap hari, dan ajak teman naik peringkat bersama.</p>
-          <div className="av-age-note"><strong>18+</strong><span>Gratis untuk berpartisipasi. Poin hanya digunakan untuk peringkat dan tidak dapat ditukar menjadi uang.</span></div>
+          <p className="av-eyebrow">{id.welcome.eyebrow}</p>
+          <h1>{id.welcome.titleStart}<br /><span>{id.welcome.titleEnd}</span></h1>
+          <p className="av-welcome-copy">{id.welcome.intro}</p>
+          <div className="av-age-note"><strong>18+</strong><span>{id.welcome.ageNotice}</span></div>
           <ErrorPanel message={message} onRetry={() => bootstrap.refetch()} />
         </div>
       </AppFrame>
@@ -372,15 +372,15 @@ function App() {
         <div className="av-welcome-cloud">
           <Brand />
           <div className="av-logo-large"><Icon name="plane" size={44} /></div>
-          <p className="av-eyebrow">AVIAX · TELEGRAM MINI APP</p>
-          <h1>Misi kecil.<br /><span>Semangat terbang!</span></h1>
-          <p className="av-welcome-copy">Selesaikan misi gratis dan terbang setiap hari untuk mengumpulkan poin.</p>
-          {bootstrap.data.prizeText && <div className="av-prize-callout"><Icon name="gift" size={19} /><span>Hadiah periode ini</span><strong>{bootstrap.data.prizeText}</strong></div>}
-          <div className="av-age-note"><strong>18+</strong><span>Gratis untuk berpartisipasi. Poin hanya digunakan untuk peringkat dan tidak dapat ditukar menjadi uang.</span></div>
+          <p className="av-eyebrow">{id.welcome.eyebrow}</p>
+          <h1>{id.welcome.titleStart}<br /><span>{id.welcome.titleEnd}</span></h1>
+          <p className="av-welcome-copy">{id.welcome.introConsent}</p>
+          {bootstrap.data.prizeText && <div className="av-prize-callout"><Icon name="gift" size={19} /><span>{id.leaderboard.currentPrize}</span><strong>{bootstrap.data.prizeText}</strong></div>}
+          <div className="av-age-note"><strong>18+</strong><span>{id.welcome.ageNotice}</span></div>
           <ul className="av-rule-list">
-            <li>Satu akun Telegram untuk setiap pemain.</li>
-            <li>Poin hanya ditambahkan setelah aktivitas diverifikasi oleh server.</li>
-            <li>Tidak perlu melakukan pembayaran untuk berpartisipasi.</li>
+            <li>{id.welcome.ruleAccount}</li>
+            <li>{id.welcome.ruleVerification}</li>
+            <li>{id.welcome.ruleFree}</li>
           </ul>
           <label className="av-terms-check">
             <input checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} type="checkbox" />
@@ -397,10 +397,10 @@ function App() {
   }
 
   const tabs: Array<{ id: Screen; label: string; icon: Parameters<typeof Icon>[0]["name"] }> = [
-    { id: "missions", label: "Misi", icon: "missions" },
-    { id: "flight", label: "Terbang", icon: "flight" },
-    { id: "leaderboard", label: "Peringkat", icon: "leaderboard" },
-    { id: "friends", label: "Teman", icon: "friends" },
+    { id: "missions", label: id.navigation.missions, icon: "missions" },
+    { id: "flight", label: id.navigation.flight, icon: "flight" },
+    { id: "leaderboard", label: id.navigation.leaderboard, icon: "leaderboard" },
+    { id: "friends", label: id.navigation.friends, icon: "friends" },
   ];
 
   async function refreshPlayerData() {
@@ -422,8 +422,8 @@ function App() {
         setMissionMessage((current) => ({
           ...current,
           [mission.key]: result.awarded
-            ? `Berhasil absen! +${formatNumber(result.points + result.bonusPoints)} poin.`
-            : "Kamu sudah absen hari ini.",
+            ? id.mission.checkinSuccess(formatNumber(result.points + result.bonusPoints))
+            : id.mission.checkinAlreadyDone,
         }));
         return;
       }
@@ -441,20 +441,20 @@ function App() {
         }
         if (mission.type === "VISIT_LINK" && started.redirectUrl) {
           openExternal(started.redirectUrl);
-          setMissionMessage((current) => ({ ...current, [mission.key]: "Tautan demo dibuka. Poin akan dikonfirmasi oleh server." }));
+          setMissionMessage((current) => ({ ...current, [mission.key]: id.mission.visitOpened }));
         } else if (mission.type === "JOIN_CHANNEL" && started.channelUrl) {
           if (window.Telegram?.WebApp?.openTelegramLink) {
             window.Telegram.WebApp.openTelegramLink(started.channelUrl);
           } else {
             openExternal(started.channelUrl);
           }
-          setMissionMessage((current) => ({ ...current, [mission.key]: "Gabung channel, kembali ke sini, lalu verifikasi." }));
+          setMissionMessage((current) => ({ ...current, [mission.key]: id.mission.channelOpened }));
         } else if (mission.type === "SOFT_CHECK") {
           if (started.pageUrl) openExternal(started.pageUrl);
-          setMissionMessage((current) => ({ ...current, [mission.key]: "Selesaikan langkahnya, lalu verifikasi kembali di sini." }));
+          setMissionMessage((current) => ({ ...current, [mission.key]: id.mission.socialOpened }));
         } else if (mission.type === "DEMO_TIMER") {
           if (started.pageUrl) openExternal(started.pageUrl);
-          setMissionMessage((current) => ({ ...current, [mission.key]: "Waktu demo berjalan. Verifikasi setelah hitung mundur selesai." }));
+          setMissionMessage((current) => ({ ...current, [mission.key]: id.mission.demoStarted }));
         }
         return;
       }
@@ -464,19 +464,19 @@ function App() {
       });
       if (result.status === "done") {
         setMissionTimers((current) => ({ ...current, [mission.key]: 0 }));
-        setMissionMessage((current) => ({ ...current, [mission.key]: `Selesai! +${formatNumber(mission.points)} poin telah dikonfirmasi.` }));
+        setMissionMessage((current) => ({ ...current, [mission.key]: id.mission.complete(formatNumber(mission.points)) }));
         await refreshPlayerData();
       } else if (result.retryAfterSeconds) {
         setMissionTimers((current) => ({ ...current, [mission.key]: result.retryAfterSeconds ?? 0 }));
-        setMissionMessage((current) => ({ ...current, [mission.key]: "Belum cukup waktu. Coba verifikasi setelah hitung mundur." }));
+        setMissionMessage((current) => ({ ...current, [mission.key]: id.mission.tooEarly }));
       } else if (result.retry) {
-        setMissionMessage((current) => ({ ...current, [mission.key]: result.message ?? "Langkah ini belum terdeteksi. Selesaikan dulu lalu coba lagi." }));
+        setMissionMessage((current) => ({ ...current, [mission.key]: result.message ?? id.mission.retry }));
         await queryClient.invalidateQueries({ queryKey: queryKeys.missions });
       } else {
         await refreshPlayerData();
       }
     } catch (error) {
-      setMissionMessage((current) => ({ ...current, [mission.key]: error instanceof Error ? error.message : "Verifikasi misi gagal." }));
+      setMissionMessage((current) => ({ ...current, [mission.key]: error instanceof Error ? error.message : id.mission.failure }));
     } finally {
       setMissionBusy(null);
     }
@@ -535,14 +535,14 @@ function App() {
       <header className="av-topbar">
         <Brand />
         <div className="av-topbar-user">
-          <div className="av-user-greeting"><span>Halo, {bootstrap.data.user.firstName}</span><strong>Siap terbang hari ini?</strong></div>
-          <div className="av-points-chip"><Icon name="star" size={16} /><span>{formatNumber(bootstrap.data.user.points)}</span><small>POIN</small></div>
+          <div className="av-user-greeting"><span>{id.common.greeting(bootstrap.data.user.firstName)}</span><strong>{id.common.readyToFly}</strong></div>
+          <div className="av-points-chip"><Icon name="star" size={16} /><span>{formatNumber(bootstrap.data.user.points)}</span><small>{id.mission.points}</small></div>
         </div>
       </header>
 
       <div className="av-main-content">{activePage}</div>
 
-      <nav aria-label="Navigasi utama" className="av-bottom-nav">
+      <nav aria-label={id.navigation.label} className="av-bottom-nav">
         {tabs.map((tab) => (
           <button
             aria-current={screen === tab.id ? "page" : undefined}
@@ -567,7 +567,7 @@ function TermsPage() {
     <AppFrame>
       <section className="av-card av-terms-page">
         <a className="av-admin-back" href="#/missions">← {id.terms.back}</a>
-        <p className="av-eyebrow">AVIAX</p>
+        <p className="av-eyebrow">{id.common.appName}</p>
         <h1>{id.terms.title}</h1>
         <p>{id.terms.age}</p>
         <p>{id.terms.free}</p>
@@ -583,9 +583,9 @@ function TermsPage() {
 
 function Brand() {
   return (
-    <a aria-label="AviaX home" className="av-brand" href="#/missions">
+    <a aria-label={id.common.brandLabel} className="av-brand" href="#/missions">
       <span className="av-brand-icon"><Icon name="plane" size={22} /></span>
-      <span><strong>Avia<span>X</span></strong><small>TELEGRAM MINI APP</small></span>
+      <span><strong>Avia<span>X</span></strong><small>{id.common.brandTagline}</small></span>
     </a>
   );
 }
@@ -625,11 +625,11 @@ function MissionsPage({
     <div className="av-page-stack">
       <section className="av-hero-card">
         <div className="av-hero-content">
-          <div className="av-hero-eyebrow"><span className="av-status-dot" /> MISI &amp; PENERBANGAN HARIAN</div>
-          <h1>Halo, {firstName}.<br /><span>Saatnya lepas landas!</span></h1>
-          <p>Selesaikan misi hari ini dan kumpulkan poin untuk papan peringkat mingguan.</p>
+          <div className="av-hero-eyebrow"><span className="av-status-dot" /> {id.home.eyebrow}</div>
+          <h1>{id.common.greeting(firstName)}.<br /><span>{id.home.titleEnd}</span></h1>
+          <p>{id.home.description}</p>
           <div className="av-hero-period">
-            <span><Icon name="clock" size={15} /> {periodEndsAt ? `Periode berakhir ${formatDate(periodEndsAt)}` : "Periode belum dimulai"}</span>
+            <span><Icon name="clock" size={15} /> {periodEndsAt ? id.common.periodEnds(formatDate(periodEndsAt)) : id.leaderboard.noPeriod}</span>
             <strong>{formatCountdown(periodSeconds)}</strong>
           </div>
         </div>
@@ -642,28 +642,28 @@ function MissionsPage({
           <span className="av-plane-spark av-plane-spark-two">✧</span>
         </div>
         <div className="av-progress-card">
-          <div className="av-progress-caption"><span>Progres misi</span><strong>{completed}/{missionTotal}</strong></div>
-          <div aria-label={`${completed} dari ${missionTotal} misi selesai`} className="av-progress-track">
+          <div className="av-progress-caption"><span>{id.home.progress}</span><strong>{completed}/{missionTotal}</strong></div>
+          <div aria-label={id.common.missionCompletion(completed, missionTotal)} className="av-progress-track">
             <span style={{ width: `${missionTotal ? (completed / missionTotal) * 100 : 0}%` }} />
           </div>
-          <span className="av-progress-note">{completed === missionTotal && missionTotal > 0 ? "Semua misi selesai. Kerja hebat!" : "Satu langkah kecil, poin bertambah."}</span>
+          <span className="av-progress-note">{completed === missionTotal && missionTotal > 0 ? id.home.allDone : id.home.progressHint}</span>
         </div>
       </section>
 
       {prizeText && (
         <div className="av-prize-strip">
           <span className="av-prize-icon"><Icon name="gift" size={18} /></span>
-          <span><small>HADIAH MINGGU INI</small><strong>{prizeText}</strong></span>
+          <span><small>{id.home.weeklyPrize}</small><strong>{prizeText}</strong></span>
           <span className="av-prize-arrow" aria-hidden="true">✦</span>
         </div>
       )}
 
       <section className="av-section">
         <div className="av-section-heading">
-          <div><p className="av-eyebrow">KUMPULKAN POIN</p><h2>Misi AviaX</h2></div>
-          <span className="av-section-count">{completed}/{missionTotal} selesai</span>
+          <div><p className="av-eyebrow">{id.home.collectPoints}</p><h2>{id.home.missionsTitle}</h2></div>
+          <span className="av-section-count">{completed}/{missionTotal} {id.home.finished}</span>
         </div>
-        {loading && <LoadingPanel label="Memuat misi..." />}
+        {loading && <LoadingPanel label={id.common.loadingMissions} />}
         {error && <ErrorPanel message={error.message} onRetry={onRetry} />}
         {missions?.map((mission, index) => (
           <MissionCard
@@ -676,15 +676,15 @@ function MissionsPage({
             onAction={() => onMission(mission)}
           />
         ))}
-        {missions && missions.length === 0 && <div className="av-empty-panel">Saat ini belum ada misi aktif. Coba lagi nanti.</div>}
+        {missions && missions.length === 0 && <div className="av-empty-panel">{id.home.noMissions}</div>}
       </section>
 
       <button className="av-flight-promo" onClick={onFlight} type="button">
         <span className="av-flight-promo-icon"><Icon name="plane" size={23} /></span>
-        <span><small>SUDAH SIAP?</small><strong>Terbang hari ini, ambil poin acak</strong></span>
+        <span><small>{id.home.ready}</small><strong>{id.home.flightPromo}</strong></span>
         <Icon name="arrow" size={19} />
       </button>
-      <p className="av-legal-note">Gratis untuk dimainkan · Poin bukan uang tunai · 18+</p>
+      <p className="av-legal-note">{id.home.legalNote}</p>
     </div>
   );
 }
@@ -725,14 +725,14 @@ function MissionCard({
         ? "timer"
         : "friends";
   const detail = isLocked
-    ? "Selesaikan misi sebelumnya dulu"
+    ? id.mission.locked
     : mission.type === "JOIN_CHANNEL"
-      ? "Gabung channel Telegram resmi"
+      ? id.mission.joinChannel
       : mission.type === "VISIT_LINK"
-        ? "Buka halaman AviaX"
+        ? id.mission.visitAviax
         : mission.type === "DEMO_TIMER"
-          ? "Timer diverifikasi server"
-          : "Verifikasi ringan setelah berkunjung";
+          ? id.mission.demoTimer
+          : id.mission.softCheck;
   return (
     <article className={`av-mission-card${isDone ? " is-done" : ""}${isLocked ? " is-locked" : ""}`}>
       <div className="av-mission-symbol"><Icon name={icon} size={19} /></div>
@@ -741,7 +741,7 @@ function MissionCard({
         <p>{detail}</p>
         {message && <span className="av-mission-message" role="status">{message}</span>}
       </div>
-      <div className="av-mission-reward"><strong>+{formatNumber(mission.points)}</strong><small>POIN</small></div>
+      <div className="av-mission-reward"><strong>+{formatNumber(mission.points)}</strong><small>{id.mission.points}</small></div>
       <button
         aria-label={`${actionLabel}: ${mission.title}`}
         className={`av-mission-action${isDone ? " is-done" : ""}${isLocked ? " is-locked" : ""}`}
@@ -782,9 +782,9 @@ function FlightPage({
   return (
     <div className="av-page-stack">
       <section className="av-flight-hero">
-        <p className="av-eyebrow">ABSEN HARIAN</p>
-        <h1>Terbang<br /><span>hari ini!</span></h1>
-        <p className="av-flight-intro">Setiap penerbangan membawa poin. Datang lagi besok untuk menjaga streak-mu!</p>
+        <p className="av-eyebrow">{id.flight.eyebrow}</p>
+        <h1>{id.flight.heading}<br /><span>{id.flight.title}</span></h1>
+        <p className="av-flight-intro">{id.flight.intro}</p>
         <div className="av-flight-cloud-scene" aria-hidden="true">
           <div className="av-flight-cloud av-flight-cloud-a" />
           <div className="av-flight-cloud av-flight-cloud-b" />
@@ -792,40 +792,40 @@ function FlightPage({
           <span className="av-flight-route" />
           <div className="av-flight-plane"><Icon name="plane" size={50} /></div>
         </div>
-        <div className="av-streak-pill"><Icon name="flight" size={15} /> {flight?.streak ?? 0} HARI BERUNTUN</div>
+        <div className="av-streak-pill"><Icon name="flight" size={15} /> {id.common.flightStreak(flight?.streak ?? 0)}</div>
       </section>
 
-      {loading && <LoadingPanel label="Memeriksa penerbangan harian..." />}
+      {loading && <LoadingPanel label={id.flight.loading} />}
       {error && <ErrorPanel message={error.message} onRetry={onRetry} />}
 
       {flight && (
         <>
           <section className="av-card av-today-flight">
             <div className="av-today-heading">
-              <div><p className="av-eyebrow">PENERBANGAN HARI INI</p><h2>{flight.today.completed ? "Kamu sudah terbang!" : "Siap lepas landas?"}</h2></div>
+              <div><p className="av-eyebrow">{id.flight.today}</p><h2>{flight.today.completed ? id.flight.alreadyFlown : id.flight.ready}</h2></div>
               <div className={`av-today-mark${flight.today.completed ? " is-completed" : ""}`}><Icon name={flight.today.completed ? "check" : "plane"} size={21} /></div>
             </div>
             <div className="av-flight-award">
               <span className="av-award-spark">✦</span>
               <strong>{flight.today.completed ? `+${formatNumber(flight.today.points ?? 0)}` : "?"}</strong>
-              <small>{flight.today.completed ? "POIN DITERIMA" : "POIN ACAK"}</small>
-              {flight.today.completed && <span className="av-award-note">Sudah masuk ke saldo poinmu</span>}
+              <small>{flight.today.completed ? id.flight.pointsReceived : id.flight.randomPoints}</small>
+              {flight.today.completed && <span className="av-award-note">{id.flight.pointsAdded}</span>}
             </div>
             {!flight.today.completed ? (
               <button className="av-button av-button-primary av-button-wide av-fly-button" disabled={isPending} onClick={onFly} type="button">
-                <Icon name="plane" size={18} /> {isPending ? "SEDANG TERBANG..." : "TERBANG SEKARANG"}
+                <Icon name="plane" size={18} /> {isPending ? id.flight.flying : id.flight.flyNow}
               </button>
             ) : (
-              <div className="av-next-flight"><Icon name="clock" size={16} /><span>Penerbangan berikutnya dalam</span><strong>{formatCountdown(secondsUntilNext)}</strong></div>
+              <div className="av-next-flight"><Icon name="clock" size={16} /><span>{id.flight.nextFlight}</span><strong>{formatCountdown(secondsUntilNext)}</strong></div>
             )}
-            {award?.awarded && <p className="av-flight-success" role="status">Penerbangan berhasil! Kamu mendapat {formatNumber(award.points)} poin{award.bonusPoints > 0 ? ` + bonus streak ${formatNumber(award.bonusPoints)} poin` : ""}.</p>}
+            {award?.awarded && <p className="av-flight-success" role="status">{id.flight.flightSuccess(formatNumber(award.points), award.bonusPoints > 0 ? formatNumber(award.bonusPoints) : "")}</p>}
             {mutationError && <p className="av-inline-error" role="alert">{mutationError.message}</p>}
           </section>
 
           <section className="av-card av-streak-card">
             <div className="av-section-heading">
-              <div><p className="av-eyebrow">TERUS TERBANG</p><h2>Streak mingguan</h2></div>
-              <span className="av-streak-bonus">+{formatNumber(flight.streakBonusPoints)} bonus</span>
+              <div><p className="av-eyebrow">{id.flight.keepFlying}</p><h2>{id.flight.weeklyStreak}</h2></div>
+              <span className="av-streak-bonus">+{formatNumber(flight.streakBonusPoints)} {id.flight.bonus}</span>
             </div>
             <div className="av-streak-days">
               {days.map((day) => (
@@ -836,7 +836,7 @@ function FlightPage({
                 </div>
               ))}
             </div>
-            <p className="av-streak-copy">Terbang {flight.streakTarget} hari berturut-turut untuk mendapatkan bonus poin streak.</p>
+            <p className="av-streak-copy">{id.flight.streakDescription(flight.streakTarget)}</p>
           </section>
         </>
       )}
@@ -867,16 +867,16 @@ function LeaderboardPage({
     <div className="av-page-stack">
       <section className="av-rank-hero">
         <div className="av-rank-heading">
-          <div><p className="av-eyebrow">SETIAP POIN BERARTI</p><h1>Peringkat<br /><span>mingguan</span></h1></div>
+          <div><p className="av-eyebrow">{id.leaderboard.eyebrow}</p><h1>{id.leaderboard.heading}<br /><span>{id.leaderboard.title}</span></h1></div>
           <div className="av-rank-clock"><Icon name="clock" size={15} /><span>{formatCountdown(periodSeconds)}</span></div>
         </div>
-        <p className="av-rank-date">{periodEndsAt ? `Reset ${formatDate(periodEndsAt)}` : "Periode belum dimulai"} · Nama pemain disamarkan</p>
-        <div className="av-podium" aria-label="Peringkat tiga besar">
+        <p className="av-rank-date">{periodEndsAt ? id.leaderboard.reset(formatDate(periodEndsAt)) : id.leaderboard.noPeriod} · {id.leaderboard.masked}</p>
+        <div className="av-podium" aria-label={id.leaderboard.topTen}>
           {podium.map((entry, index) => (
             <div className={`av-podium-place av-podium-place-${index + 1}`} key={entry?.rank ?? `empty-${index}`}>
               <div className={`av-podium-avatar av-podium-avatar-${index + 1}`}><Icon name={index === 0 ? "star" : "user"} size={index === 1 ? 25 : 20} /></div>
               <strong className="av-podium-name">{entry?.displayName ?? "—"}</strong>
-              <span className="av-podium-points">{entry ? `${formatNumber(entry.points)} poin` : "Belum ada"}</span>
+              <span className="av-podium-points">{entry ? `${formatNumber(entry.points)} ${id.common.pointsLabel}` : id.leaderboard.noEntry}</span>
               <span className="av-podium-base">{entry ? `#${entry.rank}` : "—"}</span>
             </div>
           ))}
@@ -888,16 +888,16 @@ function LeaderboardPage({
       {prizeText && (
         <div className="av-prize-strip">
           <span className="av-prize-icon"><Icon name="gift" size={18} /></span>
-          <span><small>HADIAH PERIODE INI</small><strong>{prizeText}</strong></span>
+          <span><small>{id.leaderboard.currentPrize}</small><strong>{prizeText}</strong></span>
           <span className="av-prize-arrow" aria-hidden="true">✦</span>
         </div>
       )}
-      {loading && <LoadingPanel label="Memuat peringkat..." />}
+      {loading && <LoadingPanel label={id.common.loadingLeaderboard} />}
       {error && <ErrorPanel message={error.message} onRetry={onRetry} />}
       {leaderboard && (
         <>
           <section className="av-card av-ranking-card">
-            <div className="av-section-heading"><div><p className="av-eyebrow">TOP PEMAIN</p><h2>Kejar posisi teratas</h2></div><span className="av-section-count">Top 10</span></div>
+            <div className="av-section-heading"><div><p className="av-eyebrow">{id.leaderboard.topPlayers}</p><h2>{id.leaderboard.chase}</h2></div><span className="av-section-count">{id.leaderboard.topTen}</span></div>
             <div className="av-ranking-list">
               {leaders.length > 0 ? leaders.map((entry) => (
                 <div className={`av-ranking-row${entry.rank <= 3 ? " is-top-three" : ""}`} key={entry.rank}>
@@ -906,12 +906,12 @@ function LeaderboardPage({
                   <strong>{entry.displayName}</strong>
                   <span className="av-ranking-score"><Icon name="star" size={13} /> {formatNumber(entry.points)}</span>
                 </div>
-              )) : <div className="av-ranking-empty">Papan peringkat minggu ini masih kosong. Mulai misi pertama!</div>}
+              )) : <div className="av-ranking-empty">{id.leaderboard.empty}</div>}
             </div>
           </section>
           <section className="av-my-rank-card">
             <span className="av-my-rank-icon"><Icon name="user" size={18} /></span>
-            <span><small>POSISIMU</small><strong>{leaderboard.me.rank ? `Peringkat #${leaderboard.me.rank}` : "Belum masuk peringkat"}</strong></span>
+            <span><small>{id.leaderboard.yourPosition}</small><strong>{leaderboard.me.rank ? id.common.rankNumber(leaderboard.me.rank) : id.leaderboard.notRanked}</strong></span>
             <b><Icon name="star" size={14} /> {formatNumber(leaderboard.me.points)}</b>
           </section>
         </>
@@ -946,15 +946,15 @@ function FriendsPage({
     if (!latest?.referralUrl) return;
     try {
       await navigator.clipboard.writeText(latest.referralUrl);
-      setNotice("Tautan undangan berhasil disalin.");
+      setNotice(id.common.copySuccess);
     } catch {
-      setNotice("Tidak bisa menyalin tautan. Coba gunakan tombol bagikan Telegram.");
+      setNotice(id.common.copyFailure);
     }
   }
 
   function shareInvite() {
     if (!latest?.referralUrl) return;
-    const url = `https://t.me/share/url?url=${encodeURIComponent(latest.referralUrl)}&text=${encodeURIComponent("Yuk ikut misi AviaX dan kumpulkan poin bareng aku!")}`;
+    const url = `https://t.me/share/url?url=${encodeURIComponent(latest.referralUrl)}&text=${encodeURIComponent(id.common.shareMessage)}`;
     openExternal(url);
   }
 
@@ -962,52 +962,52 @@ function FriendsPage({
     <div className="av-page-stack">
       <section className="av-invite-hero">
         <div className="av-invite-hero-copy">
-          <p className="av-eyebrow">LEBIH SERU BARENG TEMAN</p>
-          <h1>Ajak teman,<br /><span>terbang bareng!</span></h1>
-          <p>Bagikan link undanganmu. Teman yang menyelesaikan 2 misi akan membantu poinmu terus bertambah.</p>
+          <p className="av-eyebrow">{id.common.inviteHeroEyebrow}</p>
+          <h1>{id.common.inviteHeroTitle}<br /><span>{id.common.inviteHeroSubtitle}</span></h1>
+          <p>{id.common.inviteHeroDescription}</p>
         </div>
         <div className="av-invite-plane" aria-hidden="true"><Icon name="plane" size={43} /></div>
       </section>
 
-      {loading && <LoadingPanel label="Memuat undangan dan teman..." />}
+      {loading && <LoadingPanel label={id.common.loadingReferrals} />}
       {error && <ErrorPanel message={error.message} onRetry={onRetry} />}
 
       {latest && (
         <>
           <section className="av-card av-invite-link-card">
-            <div className="av-section-heading"><div><p className="av-eyebrow">LINK UNDANGAN PRIBADI</p><h2>Bagikan link</h2></div><span className="av-invite-link-icon"><Icon name="link" size={17} /></span></div>
-            <div className="av-link-box"><span>{latest.referralUrl.replace("https://", "")}</span><button aria-label="Salin link undangan" onClick={copyInvite} type="button"><Icon name="copy" size={17} /></button></div>
-            <button className="av-button av-button-primary av-button-wide av-share-button" onClick={shareInvite} type="button"><Icon name="share" size={18} /> BAGIKAN LINK</button>
-            <p className="av-invite-limit">Undangan hari ini <strong>{latest.joinedToday}/{latest.dailyLimit}</strong></p>
+            <div className="av-section-heading"><div><p className="av-eyebrow">{id.friends.linkEyebrow}</p><h2>{id.friends.shareLink}</h2></div><span className="av-invite-link-icon"><Icon name="link" size={17} /></span></div>
+            <div className="av-link-box"><span>{latest.referralUrl.replace("https://", "")}</span><button aria-label={id.friends.copyLink} onClick={copyInvite} type="button"><Icon name="copy" size={17} /></button></div>
+            <button className="av-button av-button-primary av-button-wide av-share-button" onClick={shareInvite} type="button"><Icon name="share" size={18} /> {id.friends.share}</button>
+            <p className="av-invite-limit">{id.friends.invitedToday} <strong>{latest.joinedToday}/{latest.dailyLimit}</strong></p>
           </section>
 
           <div className="av-friend-stats">
-            <div className="av-friend-stat"><span className="av-stat-icon"><Icon name="friends" size={18} /></span><span><small>TEMAN DIAJAK</small><strong>{formatNumber(latest.totalFriends)}</strong></span></div>
-            <div className="av-friend-stat"><span className="av-stat-icon av-stat-icon-gold"><Icon name="star" size={18} /></span><span><small>HADIAH PER TEMAN</small><strong>Setelah 2 misi</strong></span></div>
+            <div className="av-friend-stat"><span className="av-stat-icon"><Icon name="friends" size={18} /></span><span><small>{id.friends.invitedFriends}</small><strong>{formatNumber(latest.totalFriends)}</strong></span></div>
+            <div className="av-friend-stat"><span className="av-stat-icon av-stat-icon-gold"><Icon name="star" size={18} /></span><span><small>{id.friends.rewardPerFriend}</small><strong>{id.friends.afterTwoMissions}</strong></span></div>
           </div>
 
           <section className="av-card av-friends-list-card">
-            <div className="av-section-heading"><div><p className="av-eyebrow">KRU KAMU</p><h2>Teman bergabung</h2></div><span className="av-section-count">{friends.length} teman</span></div>
+            <div className="av-section-heading"><div><p className="av-eyebrow">{id.friends.crew}</p><h2>{id.friends.joinedFriends}</h2></div><span className="av-section-count">{id.common.friendCount(friends.length)}</span></div>
             {friends.length > 0 ? (
               <div className="av-friends-list">
                 {friends.map((friend, index) => (
                   <div className="av-friend-row" key={`${friend.displayName}-${friend.joinedAt}-${index}`}>
                     <span className="av-friend-avatar"><Icon name="user" size={17} /></span>
-                    <span className="av-friend-name"><strong>{friend.displayName}</strong><small>Bergabung {formatDate(friend.joinedAt)}</small></span>
-                    <span className={`av-friend-status${friend.status === "qualified" ? " is-qualified" : ""}`}><span />{friend.status === "qualified" ? "Selesai" : "Bergabung"}</span>
+                    <span className="av-friend-name"><strong>{friend.displayName}</strong><small>{id.common.joinedAt(formatDate(friend.joinedAt))}</small></span>
+                    <span className={`av-friend-status${friend.status === "qualified" ? " is-qualified" : ""}`}><span />{friend.status === "qualified" ? id.friends.completed : id.friends.joined}</span>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="av-friends-empty">
                 <Icon name="friends" size={25} />
-                <strong>Belum ada teman di kru kamu</strong>
-                <span>Bagikan link undanganmu untuk mulai mengajak teman.</span>
+                <strong>{id.friends.emptyTitle}</strong>
+                <span>{id.friends.emptyDescription}</span>
               </div>
             )}
-            {hasMore && <button className="av-button av-button-quiet av-load-more" disabled={loadingMore} onClick={onLoadMore} type="button">{loadingMore ? "MEMUAT..." : "MUAT LEBIH BANYAK"}</button>}
+            {hasMore && <button className="av-button av-button-quiet av-load-more" disabled={loadingMore} onClick={onLoadMore} type="button">{loadingMore ? id.friends.loadingMore : id.friends.loadMore}</button>}
           </section>
-          <p className="av-legal-note">Undang teman untuk bermain gratis. Tidak perlu pembayaran.</p>
+          <p className="av-legal-note">{id.friends.legal}</p>
         </>
       )}
     </div>
@@ -1031,7 +1031,7 @@ function AdminPage() {
         body: JSON.stringify(values),
       }),
     onSuccess: async () => {
-      setMessage("Status akun berhasil diperbarui.");
+      setMessage(id.admin.saved);
       setTelegramId("");
       await queryClient.invalidateQueries({ queryKey: ["admin-metrics"] });
     },
@@ -1042,7 +1042,7 @@ function AdminPage() {
       body: JSON.stringify({ action: "daily_draw" }),
     }),
     onSuccess: async (result) => {
-      setMessage(result.winnerId ? `Pengundian ${result.date} selesai.` : "Belum ada peserta yang memenuhi syarat hari ini.");
+      setMessage(result.winnerId ? id.common.drawFinished(result.date) : id.admin.noEligibleDraw);
       await queryClient.invalidateQueries({ queryKey: ["admin-metrics"] });
     },
   });
@@ -1052,7 +1052,7 @@ function AdminPage() {
       body: JSON.stringify({ startsAt: new Date(campaignStart).toISOString() }),
     }),
     onSuccess: async () => {
-      setMessage("Periode kampanye empat minggu berhasil dibuat.");
+      setMessage(id.admin.scheduleCreated);
       await queryClient.invalidateQueries({ queryKey: ["admin-metrics"] });
     },
   });
@@ -1066,59 +1066,59 @@ function AdminPage() {
       link.download = "aviax-winners.csv";
       link.click();
       URL.revokeObjectURL(url);
-      setMessage("Daftar pemenang berhasil diekspor.");
+      setMessage(id.admin.winnersExported);
     }).catch((error: unknown) => {
-      setMessage(error instanceof Error ? error.message : "Ekspor CSV gagal.");
+      setMessage(error instanceof Error ? error.message : id.admin.exportFailure);
     });
   }
 
   return (
     <AppFrame>
       <div className="av-admin-page">
-        <header className="av-admin-header"><a href="#/" className="av-admin-back">← AviaX</a><span className="av-eyebrow">DASHBOARD</span><h1>Panel admin</h1><p>Kelola periode dan aktivitas AviaX.</p></header>
-        {metrics.isPending && <LoadingPanel label="Memuat dashboard admin..." />}
+        <header className="av-admin-header"><a href="#/" className="av-admin-back">{id.admin.back}</a><span className="av-eyebrow">{id.admin.dashboard}</span><h1>{id.admin.title}</h1><p>{id.admin.intro}</p></header>
+        {metrics.isPending && <LoadingPanel label={id.admin.loading} />}
         {metrics.error && <ErrorPanel message={metrics.error.message} onRetry={() => metrics.refetch()} />}
         {metrics.data && (
           <>
             <div className="av-admin-stats">
-              <StatCard label="Pemain" value={metrics.data.totals.users} />
-              <StatCard label="Total poin" value={metrics.data.totals.points} />
-              <StatCard label="Klik misi" value={metrics.data.totals.clicks} />
+              <StatCard label={id.common.player} value={metrics.data.totals.users} />
+              <StatCard label={id.common.totalPoints} value={metrics.data.totals.points} />
+              <StatCard label={id.common.missionClicks} value={metrics.data.totals.clicks} />
             </div>
             <section className="av-card av-admin-card">
-              <p className="av-eyebrow">PERIODE KAMPANYE</p><h2>Jadwal empat minggu</h2>
+              <p className="av-eyebrow">{id.admin.schedule}</p><h2>{id.admin.fourWeeks}</h2>
               {metrics.data.weeks.length > 0
-                ? <p>Kampanye aktif mencakup {metrics.data.weeks.length} minggu. Zona waktu: {metrics.data.timezone}.</p>
-                : <><p>Belum ada jadwal. Tetapkan waktu mulai sebelum membagikan aplikasi.</p><label>Mulai pada<input onChange={(event) => setCampaignStart(event.target.value)} type="datetime-local" value={campaignStart} /></label><button className="av-button av-button-primary" disabled={!campaignStart || campaignMutation.isPending} onClick={() => campaignMutation.mutate()} type="button">{campaignMutation.isPending ? "MENYIMPAN..." : "BUAT JADWAL KAMPANYE"}</button></>}
+                ? <p>{id.common.timezone(metrics.data.timezone, metrics.data.weeks.length)}</p>
+                : <><p>{id.admin.setStart}</p><label>{id.admin.startsAt}<input onChange={(event) => setCampaignStart(event.target.value)} type="datetime-local" value={campaignStart} /></label><button className="av-button av-button-primary" disabled={!campaignStart || campaignMutation.isPending} onClick={() => campaignMutation.mutate()} type="button">{campaignMutation.isPending ? id.admin.saving : id.admin.createSchedule}</button></>}
               {metrics.data.rewardConfiguration.TODO && <p>{metrics.data.rewardConfiguration.TODO}</p>}
             </section>
             <section className="av-card av-admin-card">
-              <p className="av-eyebrow">HASIL MINGGUAN</p><h2>10 peringkat teratas</h2>
+              <p className="av-eyebrow">{id.admin.weeklyResults}</p><h2>{id.admin.topTen}</h2>
               {metrics.data.weeks.length > 0 ? metrics.data.weeks.map((week) => (
                 <div className="av-admin-week" key={week.weekNumber}>
-                  <strong>Minggu {week.weekNumber}{week.isFinal ? " · Final" : ""}</strong>
-                  {week.entries.length ? week.entries.map((entry) => <p key={entry.rank}>#{entry.rank} {entry.displayName} · {formatNumber(entry.points)} poin</p>) : <p>Belum ada peserta.</p>}
+                  <strong>{id.common.weekNumber(week.weekNumber, week.isFinal)}</strong>
+                  {week.entries.length ? week.entries.map((entry) => <p key={entry.rank}>#{entry.rank} {entry.displayName} · {formatNumber(entry.points)} {id.common.pointsLabel}</p>) : <p>{id.admin.noPlayers}</p>}
                 </div>
-              )) : <p>Jadwal minggu belum dibuat.</p>}
+              )) : <p>{id.admin.noSchedule}</p>}
             </section>
             <section className="av-card av-admin-card">
-              <p className="av-eyebrow">MODERASI</p><h2>Akun yang ditandai</h2>
-              <label>Telegram ID<input inputMode="numeric" onChange={(event) => setTelegramId(event.target.value)} value={telegramId} /></label>
+              <p className="av-eyebrow">{id.admin.moderation}</p><h2>{id.admin.flaggedAccounts}</h2>
+              <label>{id.admin.telegramId}<input inputMode="numeric" onChange={(event) => setTelegramId(event.target.value)} value={telegramId} /></label>
               <div className="av-admin-actions">
-                <button className="av-button av-button-quiet" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: true, banned: false })} type="button">Tandai</button>
-                <button className="av-button av-button-quiet" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: true, banned: true })} type="button">Tandai &amp; blokir</button>
-                <button className="av-button av-button-primary" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: false, banned: false })} type="button">Pulihkan</button>
+                <button className="av-button av-button-quiet" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: true, banned: false })} type="button">{id.admin.mark}</button>
+                <button className="av-button av-button-quiet" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: true, banned: true })} type="button">{id.admin.markAndBan}</button>
+                <button className="av-button av-button-primary" disabled={!telegramId || userMutation.isPending} onClick={() => userMutation.mutate({ flagged: false, banned: false })} type="button">{id.admin.restore}</button>
               </div>
               {metrics.data.flaggedUsers.length
-                ? metrics.data.flaggedUsers.map((user) => <p key={user.telegramId}>ID {user.telegramId} · {user.username ? `@${user.username}` : user.firstName} · {user.isBanned ? "Diblokir" : "Ditandai"}</p>)
-                : <p>Tidak ada akun yang ditandai.</p>}
+                ? metrics.data.flaggedUsers.map((user) => <p key={user.telegramId}>{id.common.idLabel(user.telegramId)} · {user.username ? `@${user.username}` : user.firstName} · {id.common.adminStatus(user.isBanned)}</p>)
+                : <p>{id.admin.noFlagged}</p>}
             </section>
             <section className="av-card av-admin-card">
-              <p className="av-eyebrow">UNDIAN HARIAN</p><h2>Peserta hari ini</h2>
-              <button className="av-button av-button-primary" disabled={drawMutation.isPending} onClick={() => drawMutation.mutate()} type="button">{drawMutation.isPending ? "MENGUNDI..." : "UNDI PEMENANG HARI INI"}</button>
-              {metrics.data.dailyDraws.slice(0, 10).map((draw) => <p key={draw.date}>{draw.date} · {draw.username ? `@${draw.username}` : draw.firstName ?? "Tidak ada pemenang"} · ${formatNumber(draw.points)}</p>)}
+              <p className="av-eyebrow">{id.admin.dailyDraw}</p><h2>{id.admin.participantsToday}</h2>
+              <button className="av-button av-button-primary" disabled={drawMutation.isPending} onClick={() => drawMutation.mutate()} type="button">{drawMutation.isPending ? id.admin.drawing : id.admin.drawToday}</button>
+              {metrics.data.dailyDraws.slice(0, 10).map((draw) => <p key={draw.date}>{id.common.winnerDate(draw.date)} · {draw.username ? `@${draw.username}` : draw.firstName ?? id.common.noWinner} · {formatNumber(draw.points)}</p>)}
             </section>
-            <button className="av-button av-button-quiet av-button-wide" onClick={exportCsv} type="button">Ekspor daftar pemenang CSV</button>
+            <button className="av-button av-button-quiet av-button-wide" onClick={exportCsv} type="button">{id.admin.exportWinners}</button>
           </>
         )}
         {(message || userMutation.error || drawMutation.error || campaignMutation.error) && <p className={userMutation.error || drawMutation.error || campaignMutation.error ? "av-inline-error" : "av-admin-message"} role="status">{message || userMutation.error?.message || drawMutation.error?.message || campaignMutation.error?.message}</p>}

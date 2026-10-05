@@ -4,7 +4,7 @@ AviaX is a mobile-first Telegram Mini App for Indonesian players. Players comple
 
 ## Stack and trust boundaries
 
-- React, TypeScript, Vite, TanStack Query, and `HashRouter`
+- React 18, TypeScript, Vite, TanStack Query, and `HashRouter`
 - Supabase Postgres, Row Level Security, and Edge Functions
 - Telegram Mini App `initData` is verified by Edge Functions with the BotFather token
 - The browser uses only the Supabase anon key. The service-role key, bot token, redirect signing secret, and IP hash salt must remain Supabase secrets.
@@ -122,6 +122,7 @@ The Vite base path and `HashRouter` are configured for the repository path `/Avi
 - Supply the official channel, AviaX and demo URLs, official social links, bot username, app short name, and confirmed reward amounts in `settings`.
 - Confirm the campaign start date and create its four weeks in the admin page.
 - Complete legal review of the Syarat & Ketentuan content; the current page is a launch placeholder.
+- Replace the legal placeholder in `src/i18n/id.ts` and update the `terms_url` / `terms_content` settings with the approved content.
 - Provide final logo, plane, and cloud artwork if replacing the CSS illustration/background.
 - Create/configure the BotFather Mini App and make the bot an administrator of the verification channel.
 - Add GitHub Pages repository variables and enable the Actions-based Pages deployment.

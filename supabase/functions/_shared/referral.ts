@@ -1,8 +1,9 @@
 export function maskReferralName(username: string | null, firstName: string): string {
-  const name = username?.trim()
-    ? `@${username.trim()}`
-    : firstName.trim() || "Pemain";
-  return `${name.slice(0, 2)}***`;
+  const trimmedUsername = username?.trim();
+  const name = trimmedUsername
+    ? `@${trimmedUsername.slice(0, 2)}`
+    : (firstName.trim() || "Pemain").slice(0, 2);
+  return `${name}***`;
 }
 
 export function buildReferralUrl(

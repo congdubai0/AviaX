@@ -14,7 +14,8 @@ describe("referral links and masked names", () => {
   });
 
   it("masks both Telegram usernames and first names", () => {
-    expect(maskReferralName("user_name", "Ayu")).toBe("@u***");
+    expect(maskReferralName("user_name", "Ayu")).toBe("@us***");
+    expect(maskReferralName("x", "Ayu")).toBe("@x***");
     expect(maskReferralName(null, "Ayu Santoso")).toBe("Ay***");
   });
 });
