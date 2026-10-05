@@ -1,6 +1,7 @@
 import { checkRateLimit, jsonResponse, withAuthenticatedUser } from "../_shared/http.ts";
 import { getAdminClient, getSetting } from "../_shared/supabase.ts";
 import { secureRandomIndex, localDateKey } from "../_shared/daily.ts";
+import { isAdminTelegramId } from "../_shared/admin.ts";
 
 type RewardConfiguration = {
   weekly: { weeks: number; total_usd: number; top_1: number; top_2: number; top_3: number; ranks_4_10_each: number };
@@ -156,8 +157,7 @@ Deno.serve((request) => withAuthenticatedUser(request, async (context) => {
   const { data: ids, error: idsError } = await client.from("settings")
     .select("value").eq("key", "admin_telegram_ids").maybeSingle();
   if (idsError) throw new Error(`Admin access list load failed: ${idsError.message}`);
-  const adminIds = Array.isArray(ids?.value) ? ids.value as Array<string | number> : [];
-  if (!adminIds.some((id) => String(id) === context.identity.telegramId)) {
+  if (!isAdminTelegramId(context.identity.telegramId, ids?.value)) {
     return jsonResponse({ error: "Akses admin ditolak.", code: "ADMIN_FORBIDDEN" }, 403);
   }
 
