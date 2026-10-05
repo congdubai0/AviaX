@@ -152,6 +152,204 @@ create table public.daily_draws (
   created_at timestamptz not null default now()
 );
 
+create table public.rate_limits (
+  bucket_key text not null,
+  window_started_at timestamptz not null,
+  request_count integer not null check (request_count >= 0),
+  primary key (bucket_key, window_started_at)
+);
+
+create or replace function public.bootstrap_telegram_user(
+  p_telegram_id bigint,
+  p_username text,
+  p_first_name text,
+  p_start_param text,
+  p_referral_code text,
+  p_ip_hash text,
+  p_device_hash text
+)
+returns setof public.users
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user public.users;
+  v_user_id uuid;
+  v_created boolean;
+  v_referrer_id uuid;
+  v_timezone text := 'Asia/Jakarta';
+  v_daily_limit integer := 10;
+  v_today date;
+  v_referrals_today integer;
+begin
+  insert into public.users(
+    telegram_id, username, first_name, referral_code, ip_hash, device_hash,
+    group_code
+  )
+  values (
+    p_telegram_id, p_username, p_first_name, p_referral_code, p_ip_hash, p_device_hash,
+    case when p_start_param is not null and p_start_param not like 'ref\_%' escape '\'
+      then left(p_start_param, 64) else null end
+  )
+  on conflict (telegram_id) do update
+    set username = excluded.username,
+        first_name = excluded.first_name,
+        ip_hash = excluded.ip_hash,
+        device_hash = coalesce(excluded.device_hash, public.users.device_hash),
+        updated_at = now()
+  returning id, (xmax = 0) into v_user_id, v_created;
+
+  if v_created and p_start_param like 'ref\_%' escape '\' then
+    select id into v_referrer_id
+    from public.users
+    where referral_code = substring(p_start_param from 5)
+      and telegram_id <> p_telegram_id
+    for update;
+
+    if v_referrer_id is not null then
+      select coalesce((value #>> '{}')::text, 'Asia/Jakarta')
+        into v_timezone from public.settings where key = 'timezone';
+      select coalesce((value #>> '{}')::integer, 10)
+        into v_daily_limit from public.settings where key = 'referral_daily_limit';
+      v_today := (now() at time zone v_timezone)::date;
+
+      select count(*)::integer into v_referrals_today
+      from public.referrals
+      where inviter_id = v_referrer_id
+        and created_at >= (v_today::timestamp at time zone v_timezone)
+        and created_at < ((v_today + 1)::timestamp at time zone v_timezone);
+
+      if v_referrals_today < v_daily_limit then
+        update public.users set referrer_id = v_referrer_id where id = v_user_id;
+        insert into public.referrals(inviter_id, invitee_id)
+        values (v_referrer_id, v_user_id)
+        on conflict (invitee_id) do nothing;
+      end if;
+    end if;
+  end if;
+
+  select * into v_user from public.users where id = v_user_id;
+  return next v_user;
+  return;
+end;
+$$;
+
+create or replace function public.complete_user_mission(
+  p_user_id uuid,
+  p_mission_code text,
+  p_ref_id text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_mission public.missions;
+  v_user_mission public.user_missions;
+  v_week_id uuid;
+  v_awarded boolean;
+  v_task_count integer;
+  v_referral public.referrals;
+  v_timezone text := 'Asia/Jakarta';
+  v_daily_limit integer := 10;
+  v_reward_points integer := 100;
+  v_today date;
+  v_rewarded_today integer;
+begin
+  select * into v_mission from public.missions
+  where code = p_mission_code and active;
+  if not found then raise exception 'mission_not_found'; end if;
+
+  perform 1 from public.users where id = p_user_id and not is_banned for update;
+  if not found then raise exception 'user_not_found_or_banned'; end if;
+
+  select * into v_user_mission from public.user_missions
+  where user_id = p_user_id and mission_code = p_mission_code
+  for update;
+  if found and v_user_mission.status = 'done' then
+    return jsonb_build_object('awarded', false, 'points', 0, 'status', 'done');
+  end if;
+
+  if v_mission.requires is not null and not exists (
+    select 1 from public.user_missions
+    where user_id = p_user_id and mission_code = v_mission.requires and status = 'done'
+  ) then
+    raise exception 'mission_locked';
+  end if;
+
+  if v_mission.kind = 'demo_timer' and (
+    v_user_mission.started_at is null
+    or now() < v_user_mission.started_at + interval '60 seconds'
+  ) then
+    raise exception 'demo_timer_incomplete';
+  end if;
+
+  select id into v_week_id from public.weeks
+  where now() >= starts_at and now() < ends_at
+  order by starts_at desc limit 1;
+  if v_week_id is null then raise exception 'campaign_week_not_configured'; end if;
+
+  insert into public.user_missions(user_id, mission_code, status, started_at, completed_at)
+  values (p_user_id, p_mission_code, 'done', coalesce(v_user_mission.started_at, now()), now())
+  on conflict (user_id, mission_code) do update
+    set status = 'done', completed_at = now()
+    where public.user_missions.status <> 'done';
+
+  select public.award_points(p_user_id, v_week_id, v_mission.points, 'mission', p_ref_id)
+    into v_awarded;
+
+  if p_mission_code <> 'open_app' then
+    select count(*)::integer into v_task_count
+    from public.user_missions um
+    join public.missions m on m.code = um.mission_code
+    where um.user_id = p_user_id and um.status = 'done' and m.kind <> 'open_app';
+
+    if v_task_count >= 2 then
+      select * into v_referral from public.referrals
+      where invitee_id = p_user_id and not rewarded
+      for update;
+
+      if found then
+        perform 1 from public.users where id = v_referral.inviter_id for update;
+        select coalesce((value #>> '{}')::text, 'Asia/Jakarta')
+          into v_timezone from public.settings where key = 'timezone';
+        select coalesce((value #>> '{}')::integer, 10)
+          into v_daily_limit from public.settings where key = 'referral_daily_limit';
+        select coalesce((value #>> '{}')::integer, 100)
+          into v_reward_points from public.settings where key = 'referral_reward_points';
+        v_today := (now() at time zone v_timezone)::date;
+        select count(*)::integer into v_rewarded_today
+        from public.referrals
+        where inviter_id = v_referral.inviter_id
+          and rewarded
+          and rewarded_at >= (v_today::timestamp at time zone v_timezone)
+          and rewarded_at < ((v_today + 1)::timestamp at time zone v_timezone);
+
+        if v_rewarded_today < v_daily_limit then
+          update public.referrals
+          set completed_missions = v_task_count, rewarded = true, rewarded_at = now()
+          where id = v_referral.id;
+          perform public.award_points(
+            v_referral.inviter_id, v_week_id, v_reward_points, 'referral', v_referral.id::text
+          );
+        else
+          update public.referrals set completed_missions = v_task_count
+          where id = v_referral.id;
+        end if;
+      end if;
+    end if;
+  end if;
+
+  return jsonb_build_object(
+    'awarded', coalesce(v_awarded, false),
+    'points', case when coalesce(v_awarded, false) then v_mission.points else 0 end,
+    'status', 'done'
+  );
+end;
+$$;
+
 create or replace function public.award_points(
   p_user_id uuid,
   p_week_id uuid,
@@ -179,6 +377,11 @@ $$;
 
 revoke all on function public.award_points(uuid, uuid, integer, text, text) from public, anon, authenticated;
 grant execute on function public.award_points(uuid, uuid, integer, text, text) to service_role;
+revoke all on function public.bootstrap_telegram_user(bigint, text, text, text, text, text, text) from public, anon, authenticated;
+grant execute on function public.bootstrap_telegram_user(bigint, text, text, text, text, text, text) to service_role;
+revoke all on function public.complete_user_mission(uuid, text, text) from public, anon, authenticated;
+grant execute on function public.complete_user_mission(uuid, text, text) to service_role;
+revoke all on public.rate_limits from public, anon, authenticated;
 
 create or replace view public.leaderboard_weekly
 with (security_invoker = true)
@@ -217,6 +420,7 @@ alter table public.referrals enable row level security;
 alter table public.settings enable row level security;
 alter table public.security_events enable row level security;
 alter table public.daily_draws enable row level security;
+alter table public.rate_limits enable row level security;
 
 -- The browser talks only to Edge Functions; service-role access stays server-side.
 insert into public.settings(key, value) values

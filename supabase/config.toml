@@ -1,0 +1,31 @@
+project_id = "aviax"
+
+[functions.auth]
+verify_jwt = false
+
+[functions.missions]
+verify_jwt = false
+
+[functions.mission-start]
+verify_jwt = false
+
+[functions.mission-complete]
+verify_jwt = false
+
+[functions.check-channel]
+verify_jwt = false
+
+[functions.go]
+verify_jwt = false
+
+[functions.daily-flight]
+verify_jwt = false
+
+[functions.leaderboard]
+verify_jwt = false
+
+[functions.referral]
+verify_jwt = false
+
+[functions.admin]
+verify_jwt = false
