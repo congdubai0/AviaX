@@ -159,6 +159,87 @@ create table public.rate_limits (
   primary key (bucket_key, window_started_at)
 );
 
+create or replace function public.consume_rate_limit(
+  p_bucket_key text,
+  p_max_requests integer,
+  p_window_seconds integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_window timestamptz;
+  v_count integer;
+begin
+  if p_max_requests < 1 or p_window_seconds < 1 then
+    raise exception 'invalid_rate_limit';
+  end if;
+
+  v_window := to_timestamp(
+    floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds
+  );
+  insert into public.rate_limits(bucket_key, window_started_at, request_count)
+  values (p_bucket_key, v_window, 1)
+  on conflict (bucket_key, window_started_at) do update
+    set request_count = public.rate_limits.request_count + 1
+    where public.rate_limits.request_count < p_max_requests
+  returning request_count into v_count;
+
+  return found;
+end;
+$$;
+
+create or replace function public.start_user_mission(
+  p_user_id uuid,
+  p_mission_code text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_mission public.missions;
+  v_user_mission public.user_missions;
+begin
+  perform 1 from public.users
+  where id = p_user_id and accepted_terms_at is not null and not is_banned
+  for update;
+  if not found then raise exception 'age_confirmation_required'; end if;
+
+  select * into v_mission from public.missions
+  where code = p_mission_code and active;
+  if not found then raise exception 'mission_not_found'; end if;
+  if v_mission.kind = 'daily_checkin' then raise exception 'use_daily_checkin_endpoint'; end if;
+
+  if v_mission.requires is not null and not exists (
+    select 1 from public.user_missions
+    where user_id = p_user_id and mission_code = v_mission.requires and status = 'done'
+  ) then raise exception 'mission_locked'; end if;
+
+  insert into public.user_missions(user_id, mission_code)
+  values (p_user_id, p_mission_code)
+  on conflict (user_id, mission_code) do nothing;
+
+  select * into v_user_mission from public.user_missions
+  where user_id = p_user_id and mission_code = p_mission_code
+  for update;
+  if v_user_mission.status = 'not_started' then
+    update public.user_missions
+    set status = 'checking', started_at = now()
+    where id = v_user_mission.id
+    returning * into v_user_mission;
+  end if;
+
+  return jsonb_build_object(
+    'status', v_user_mission.status,
+    'started_at', v_user_mission.started_at
+  );
+end;
+$$;
+
 create or replace function public.bootstrap_telegram_user(
   p_telegram_id bigint,
   p_username text,
@@ -381,6 +462,10 @@ revoke all on function public.bootstrap_telegram_user(bigint, text, text, text, 
 grant execute on function public.bootstrap_telegram_user(bigint, text, text, text, text, text, text) to service_role;
 revoke all on function public.complete_user_mission(uuid, text, text) from public, anon, authenticated;
 grant execute on function public.complete_user_mission(uuid, text, text) to service_role;
+revoke all on function public.consume_rate_limit(text, integer, integer) from public, anon, authenticated;
+grant execute on function public.consume_rate_limit(text, integer, integer) to service_role;
+revoke all on function public.start_user_mission(uuid, text) from public, anon, authenticated;
+grant execute on function public.start_user_mission(uuid, text) to service_role;
 revoke all on public.rate_limits from public, anon, authenticated;
 
 create or replace view public.leaderboard_weekly

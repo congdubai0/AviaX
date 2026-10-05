@@ -389,12 +389,17 @@ function App() {
           openExternal(started.redirectUrl);
           setMissionMessage((current) => ({ ...current, [mission.key]: "Tautan demo dibuka. Poin akan dikonfirmasi oleh server." }));
         } else if (mission.type === "JOIN_CHANNEL" && started.channelUrl) {
-          openExternal(started.channelUrl);
+          if (window.Telegram?.WebApp?.openTelegramLink) {
+            window.Telegram.WebApp.openTelegramLink(started.channelUrl);
+          } else {
+            openExternal(started.channelUrl);
+          }
           setMissionMessage((current) => ({ ...current, [mission.key]: "Gabung channel, kembali ke sini, lalu verifikasi." }));
         } else if (mission.type === "SOFT_CHECK") {
           if (started.pageUrl) openExternal(started.pageUrl);
           setMissionMessage((current) => ({ ...current, [mission.key]: "Selesaikan langkahnya, lalu verifikasi kembali di sini." }));
         } else if (mission.type === "DEMO_TIMER") {
+          if (started.pageUrl) openExternal(started.pageUrl);
           setMissionMessage((current) => ({ ...current, [mission.key]: "Waktu demo berjalan. Verifikasi setelah hitung mundur selesai." }));
         }
         return;

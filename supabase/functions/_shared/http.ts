@@ -25,6 +25,26 @@ export type RequestContext = {
   ipHash: string;
 };
 
+export async function checkRateLimit(
+  context: RequestContext,
+  action: string,
+  maxRequests = 40,
+): Promise<Response | null> {
+  const { data, error } = await getAdminClient().rpc("consume_rate_limit", {
+    p_bucket_key: `${context.user.id}:${action}`,
+    p_max_requests: maxRequests,
+    p_window_seconds: 60,
+  });
+  if (error) throw new Error(`Rate limit check failed: ${error.message}`);
+  return data ? null : jsonResponse({ error: "Terlalu banyak permintaan. Coba lagi sebentar.", code: "RATE_LIMITED" }, 429);
+}
+
+export function requireAcceptedTerms(context: RequestContext): Response | null {
+  return context.user.accepted_terms_at
+    ? null
+    : jsonResponse({ error: "Konfirmasi usia 18+ dan syarat terlebih dahulu.", code: "AGE_CONFIRMATION_REQUIRED" }, 403);
+}
+
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,

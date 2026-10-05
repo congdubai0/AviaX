@@ -38,7 +38,9 @@ function routeRequest(path: string, options: RequestInit): { name: string; body:
   const missionMatch = pathname.match(/^missions\/([^/]+)\/(start|verify)$/);
   if (missionMatch) {
     return {
-      name: missionMatch[2] === "start" ? "mission-start" : "mission-complete",
+      name: missionMatch[2] === "start"
+        ? "mission-start"
+        : missionMatch[1] === "join_channel" ? "check-channel" : "mission-complete",
       body: { ...body, code: decodeURIComponent(missionMatch[1]) },
     };
   }

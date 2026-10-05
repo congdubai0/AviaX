@@ -17,6 +17,7 @@ declare global {
         ready: () => void;
         expand: () => void;
         openLink?: (url: string) => void;
+        openTelegramLink?: (url: string) => void;
         HapticFeedback?: {
           impactOccurred: (style: "light" | "medium" | "heavy") => void;
         };
