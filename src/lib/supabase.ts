@@ -2,6 +2,16 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | undefined;
 
+const launchInitData = (() => {
+  const sdkInitData = window.Telegram?.WebApp?.initData;
+  if (sdkInitData) return sdkInitData;
+
+  const fragmentInitData = new URLSearchParams(window.location.hash.slice(1)).get("tgWebAppData");
+  if (fragmentInitData) return fragmentInitData;
+
+  return new URLSearchParams(window.location.search).get("tgWebAppData") ?? "";
+})();
+
 export function getSupabaseClient(): SupabaseClient {
   if (client) return client;
 
@@ -25,7 +35,7 @@ export function getSupabaseClient(): SupabaseClient {
 }
 
 export function telegramInitData(): string {
-  const initData = window.Telegram?.WebApp?.initData;
+  const initData = window.Telegram?.WebApp?.initData || launchInitData;
   if (initData) return initData;
 
   if (import.meta.env.DEV) {
